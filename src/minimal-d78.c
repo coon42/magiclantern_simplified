@@ -162,51 +162,106 @@ void disp_set_pixel(int x, int y, int c) {
   _pRgbaBuffer[rgbIdx + 3] = a;
 }
 
-static void mpu_decode(const char* in, char* out, int max_len) {
-  int len = 0;
-  int size = (unsigned char) in[0];
+static void displayMenu(bool display) {
+  if (display) {
+    if (!uiLock(1, 0, 2))
+      _displayMenu = true;
+  }
+  else {
+    if (!uiLock(0, 0, 2))
+      _displayMenu = false;
+  }
+}
 
-  // print each byte as hex
-  for (const char * c = in; c < in + size; c++)
-    len += snprintf(out + len, max_len - len, "%02x ", *c);
+static void drawUptime() {
+  const uint* p32BitTimer1 = 0xD020000C;
+  uint snap32_1 = *p32BitTimer1;
 
-  // trim the last space
-  if (len)
-    out[len - 1] = 0;
+  uint32_t t = snap32_1 / 1000;
+  uint32_t s = (t / 1000) % 60;
+  uint32_t m = (t / (1000 * 60)) % 60;
+  uint32_t h = (t / (1000 * 60 * 60)) % 24;
 
-  const int msgId = in[2];
+  lcdPrintf(0, 325, "uptime: %02d:%02d:%02d", h, m, s);
+}
 
-  if (msgId == 0x03) { // Button press
-    const int buttonId = in[3];
-    const int buttonPress = in[4];
+static void onButtonPress(uint8_t buttonId, bool press) {
+  const char* pButtonName = "undefined";
 
-    const char* pButtonName;
+  switch (buttonId) {
+    case 0x05: pButtonName = "Sw1 (half shutter)"; break;
+    case 0x10: pButtonName = "Info"; break;
+    case 0x11: {
+      pButtonName = "Trashcan";
 
-    switch (buttonId) {
-      case 0x05: pButtonName = "Sw1 (half shutter)"; break;
-      case 0x10: pButtonName = "Info"; break;
-      case 0x11: {
-	pButtonName = "Trashcan";
-
-	if (buttonPress) {
-	  if (!_displayMenu) {
-            if (!uiLock(1, 0, 2))
-              _displayMenu = true;
-	  }
-	  else {
-	   if (!uiLock(0, 0, 2))
-             _displayMenu = false;
-	  }
-	}
-	
-	break;
+      if (press) {
+        if (!_displayMenu)
+          displayMenu(true);
+        else
+          displayMenu(false);
       }
-
-      default:
-        pButtonName = "Unknown";
+       
+      break;
     }
 
-    uart_printf("Button %s (0x%X) %s\n", pButtonName, buttonId, buttonPress == 0x00 ? "release" : "press");
+    default:
+      pButtonName = "Unknown";
+  }
+
+  uart_printf("Button %s (0x%X) %s\n", pButtonName, buttonId, press ? "press" : "release");
+}
+
+static void onDialRotate(uint8_t buttonId, int8_t direction) {
+  
+}
+
+static void onMpuUnknown() {
+
+}
+
+static void onMpuButtonPress(uint8_t buttonId, int8_t param) {
+  switch (buttonId) {
+      case 0x05:
+      case 0x10:
+      case 0x11:
+        onButtonPress(buttonId, param > 0);
+	break;  
+    }
+}
+
+extern const char* const mpu_recv_ring_buffer[105];
+extern const int mpu_recv_ring_buffer_tail;
+
+static void dispatch_mpu() {
+  static int _last_tail = 0;
+  const max_mpu_recv = 80; // see RP 1.6.0: 0xe009b2ce
+  const int diff = mpu_recv_ring_buffer_tail - _last_tail;
+  const int numNewMpuMessages = diff >= 0 ? diff : diff + max_mpu_recv;
+
+  for (int i = 0; i < numNewMpuMessages; ++i) {
+    uint8_t pMpuMsg[105];
+    const uint8_t* pCurMsg = &mpu_recv_ring_buffer[_last_tail][4];
+
+    int len = 0;
+    int size = pCurMsg[0];
+
+    for (const char* pC = pCurMsg; pC < pCurMsg + size; pC++)
+      len += snprintf(pMpuMsg + len, sizeof(pMpuMsg) - len, "%02x ", *pC);
+
+    if (len)
+      pMpuMsg[len - 1] = 0;
+
+    const int msgId = pCurMsg[2];
+
+    if (msgId == 0x03) {
+      const int buttonId = pCurMsg[3];
+      const int buttonParam = pCurMsg[4];
+
+      onMpuButtonPress(buttonId, buttonParam);
+    }
+
+    _last_tail = (_last_tail + 1) % max_mpu_recv;
+    uart_printf("[ML] <%d> *** mpu_recv(%s)\n", _last_tail, pMpuMsg);
   }
 }
 
@@ -224,49 +279,14 @@ static void DUMP_ASM microml_task() {
 
   uart_printf("[ML] Frame buffer allocated at %p\n", _pRgbaBuffer);
 
+  const max_mpu_send = 50; // see RP 1.6.0: 0xe009b2dc
+
   while(true) {
     memset(_pRgbaBuffer, 0xFF, rgbaSize);
+    lcdPrintf(50, 125, "ring buffer tail index : %d", mpu_recv_ring_buffer_tail);
 
-    extern const int mpu_recv_ring_buffer_tail;
-    lcdPrintf(50, 125, "%s: %d", "ring buffer tail index", mpu_recv_ring_buffer_tail);
-
-    extern const char* const mpu_recv_ring_buffer[105];
-
-    static const char* pLastMessage = "none";
-    static int last_tail = 0;
-    static char pMpuMsg[105];
-
-    const max_mpu_recv = 80; // see RP 1.6.0: 0xe009b2ce
-    const max_mpu_send = 50; // see RP 1.6.0: 0xe009b2dc
-    const int diff = mpu_recv_ring_buffer_tail - last_tail;
-    const int numNewMpuMessages = diff > 0 ? diff : diff + max_mpu_recv;
-
-    for (int i = 0; i < numNewMpuMessages; ++i) {
-      pLastMessage = &mpu_recv_ring_buffer[last_tail][4];
-      mpu_decode(pLastMessage, pMpuMsg, sizeof(pMpuMsg));
-      uart_printf("[ML] <%d> *** mpu_recv(%s)\n", last_tail, pMpuMsg);
-
-      last_tail = (last_tail + 1) % max_mpu_recv;
-    }
-
-    if (last_tail != mpu_recv_ring_buffer_tail) {
-      pLastMessage = &mpu_recv_ring_buffer[last_tail][4];
-      mpu_decode(pLastMessage, pMpuMsg, sizeof(pMpuMsg));
-      //qprintf("[%d] mpu_recv(%s)\n", last_tail, msg);
-      //DryosDebugMsg(0, 15, "[ML] <%d> *** mpu_recv(%s)", last_tail, mpu_msg);
-
-      last_tail = mpu_recv_ring_buffer_tail;
-    }
-
-    const uint* p32BitTimer1 = 0xD020000C;
-    uint snap32_1 = *p32BitTimer1;
-
-    uint32_t t = snap32_1 / 1000;
-    uint32_t s = (t / 1000) % 60;
-    uint32_t m = (t / (1000 * 60)) % 60;
-    uint32_t h = (t / (1000 * 60 * 60)) % 24;
-
-    lcdPrintf(0, 325, "uptime: %02d:%02d:%02d", h, m, s);
+    dispatch_mpu();
+    drawUptime();
 
     uint8_t** ppCurrentBufferIndex = 0xE0255234;
     uint8_t* pCurrentBufferIndex = (*ppCurrentBufferIndex) - 0xC;
@@ -295,7 +315,7 @@ static void DUMP_ASM microml_task() {
 
     led_blink(2, 50, 50);
 
-    msleep(1000);
+    msleep(250);
   }
 }
 

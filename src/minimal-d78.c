@@ -44,13 +44,30 @@ extern int FIO_Flush(const char * filename);
 
 // Micro ML
 
+// options:
+
+typedef void(*OptionEnableCallback_t)(bool enable);
+
+struct Option_t {
+  const char* pName;
+  bool enabled;
+  OptionEnableCallback_t pOptionEnableCallback;
+};
+
+static struct Option_t _options[1];
+const int _numOptions = sizeof(_options) / sizeof(struct Option_t);
+
 static bool _displayMenu = false;
 static uint8_t* _pVram1 = (uint8_t*)0x41100100;
 static uint8_t* _pVram2 = (uint8_t*)0x41340400;
 
-static const uint16_t _xRes = 736;
-static const uint16_t _yRes = 480;
+#define X_RES 736
+#define Y_RES 480
+
+static const uint16_t _xRes = X_RES;
+static const uint16_t _yRes = Y_RES;
 static uint8_t* _pRgbaBuffer = NULL;
+const uint32_t _rgbaSize = 4 * X_RES * Y_RES;
 
 enum COLORS {
   COLOR_WHITE  = 0x80FF80FF,
@@ -173,6 +190,10 @@ static void displayMenu(bool display) {
   }
 }
 
+static void drawClear() { 
+  memset(_pRgbaBuffer, 0xFF, _rgbaSize);
+}
+
 static void drawUptime() {
   const uint* p32BitTimer1 = 0xD020000C;
   uint snap32_1 = *p32BitTimer1;
@@ -185,11 +206,59 @@ static void drawUptime() {
   lcdPrintf(0, 325, "uptime: %02d:%02d:%02d", h, m, s);
 }
 
+static void drawOptions() {
+  for (int i = 0; i < _numOptions; ++i)  
+    lcdPrintf(10, 100, "%s: %s", _options[i].pName, _options[i].enabled ? "On" : "Off");
+}
+
+static void enableElectronicShutterMode(bool enable) {
+  uart_printf("enableElectronicShutterMode; %d\n", enable);
+
+  // does crash!?:
+  /*
+  void (*sht_EnableManualSilent)(void) = 0xe0054855;
+  void (*sht_DisableManualSilent)(void) = 0xe0054841;
+
+  if (enable)
+    call("sht_EnableManualSilent", 0);
+  else
+    call("sht_DisableManualSilent", 0);
+  */
+}
+
+static void onToggleMenuOption(int optionNo) {
+  if (optionNo < 0 || optionNo > _numOptions) {
+    uart_printf("[ML] cannot toggle option, invalid option no!\n");
+    return;
+  }
+
+  const bool enable = _options[optionNo].enabled ? false : true;
+  const char* pActionStr = enable ? "Enable" : "Disable";
+  const char* pName = _options[optionNo].pName;
+
+  uart_printf("%s %s\n", pActionStr, pName);
+
+  if (_options[optionNo].pOptionEnableCallback) {
+    _options[optionNo].pOptionEnableCallback(enable);
+    _options[optionNo].enabled = enable;
+  }
+  else
+    uart_printf("[ML] Error, no callback defined!\n");
+}
+
 static void onButtonPress(uint8_t buttonId, bool press) {
   const char* pButtonName = "undefined";
 
   switch (buttonId) {
     case 0x05: pButtonName = "Sw1 (half shutter)"; break;
+    case 0x0D: {
+      pButtonName = "Set";
+
+      if (press)
+        onToggleMenuOption(0);
+
+      break;
+    }
     case 0x10: pButtonName = "Info"; break;
     case 0x11: {
       pButtonName = "Trashcan";
@@ -211,6 +280,39 @@ static void onButtonPress(uint8_t buttonId, bool press) {
   uart_printf("Button %s (0x%X) %s\n", pButtonName, buttonId, press ? "press" : "release");
 }
 
+static void render() {
+  const uint8_t** ppCurrentBufferIndex = 0xE0255234;
+  const uint8_t* pCurrentBufferIndex = (*ppCurrentBufferIndex) - 0xC;
+
+  // uart_printf("[ML] current buffer index: [%p - 0xC] -> [%p] -> %d\n", *ppCurrentBufferIndex, pCurrentBufferIndex, *pCurrentBufferIndex);
+  const uint32_t* pMarvBase = 0xE0255238;
+  const struct MARV** ppMarv = *pMarvBase - 0x5c + 0 * 0x28 + (1 - *pCurrentBufferIndex) * 4;
+  const struct MARV* pMarv = *ppMarv;
+
+  // uart_printf("[ML] pMarv: %p\n", pMarv);
+
+  if (!pMarv) {
+    uart_printf("[ML] VRAM buffer not available. Is camera off!?");
+    return;
+  }
+
+  // uart_printf("[ML] MARV: [%p] -> [%p]\n", pMarv, pMarv->bitmap_data);
+  // uart_printf("[ML] Resolution: %dx%d\n", pMarv->width, pMarv->height);
+
+  if (pMarv->bitmap_data == _pVram1 || pMarv->bitmap_data == _pVram2)
+    bgra2uyvyaa(pMarv->bitmap_data, _pRgbaBuffer);
+  else
+    uart_printf("[ML]: error: Invalid frame buffer: %p\n", pMarv->bitmap_data);
+}
+
+static void renderMenu() {
+  drawClear();
+  drawUptime();
+  drawOptions();
+
+  render();
+}
+
 static void onDialRotate(uint8_t buttonId, int8_t direction) {
   
 }
@@ -222,6 +324,7 @@ static void onMpuUnknown() {
 static void onMpuButtonPress(uint8_t buttonId, int8_t param) {
   switch (buttonId) {
       case 0x05:
+      case 0x0D:
       case 0x10:
       case 0x11:
         onButtonPress(buttonId, param > 0);
@@ -229,28 +332,30 @@ static void onMpuButtonPress(uint8_t buttonId, int8_t param) {
     }
 }
 
+static void mpu_decode(const char* in, char* out, int max_len) {
+  int len = 0;
+  int size = (unsigned char) in[0];
+
+  /* print each byte as hex */
+  for (const char * c = in; c < in + size; c++)
+    len += snprintf(out+len, max_len-len, "%02x ", *c);
+  
+  /* trim the last space */
+  if (len)
+    out[len-1] = 0;
+}
+
 extern const char* const mpu_recv_ring_buffer[105];
 extern const int mpu_recv_ring_buffer_tail;
 
-static void dispatch_mpu() {
+static void dispatchMpu() {
   static int _last_tail = 0;
   const max_mpu_recv = 80; // see RP 1.6.0: 0xe009b2ce
   const int diff = mpu_recv_ring_buffer_tail - _last_tail;
   const int numNewMpuMessages = diff >= 0 ? diff : diff + max_mpu_recv;
 
   for (int i = 0; i < numNewMpuMessages; ++i) {
-    uint8_t pMpuMsg[105];
     const uint8_t* pCurMsg = &mpu_recv_ring_buffer[_last_tail][4];
-
-    int len = 0;
-    int size = pCurMsg[0];
-
-    for (const char* pC = pCurMsg; pC < pCurMsg + size; pC++)
-      len += snprintf(pMpuMsg + len, sizeof(pMpuMsg) - len, "%02x ", *pC);
-
-    if (len)
-      pMpuMsg[len - 1] = 0;
-
     const int msgId = pCurMsg[2];
 
     if (msgId == 0x03) {
@@ -261,15 +366,30 @@ static void dispatch_mpu() {
     }
 
     _last_tail = (_last_tail + 1) % max_mpu_recv;
+
+    uint8_t pMpuMsg[105];
+    mpu_decode(pCurMsg, pMpuMsg, sizeof(pMpuMsg));
     uart_printf("[ML] <%d> *** mpu_recv(%s)\n", _last_tail, pMpuMsg);
   }
+}
+
+static void addOption(int optionNo, const char* pName, OptionEnableCallback_t pOptionEnableCallback) {
+  if (optionNo < 0 || optionNo > _numOptions) {
+    uart_printf("[ML] Error: option %d cannot be added!\n", optionNo);
+    return; 
+  }
+
+  _options[optionNo].pName = pName;
+  _options[optionNo].enabled = false;
+  _options[optionNo].pOptionEnableCallback = pOptionEnableCallback;
+
+  uart_printf("Added option %d: %s with callback 0x%X\n", optionNo, pName , pOptionEnableCallback);
 }
 
 static void DUMP_ASM microml_task() {
   uart_printf("[ML] Hello from %s!\n", get_current_task_name());
 
-  const uint32_t rgbaSize = 4 * _xRes * _yRes;
-  _pRgbaBuffer = malloc(rgbaSize);
+  _pRgbaBuffer = malloc(_rgbaSize);
 
   if (!_pRgbaBuffer) {
     uart_printf("[ML] Error: Unable to allocate frame buffer!\n");
@@ -281,37 +401,16 @@ static void DUMP_ASM microml_task() {
 
   const max_mpu_send = 50; // see RP 1.6.0: 0xe009b2dc
 
+  // add options
+  addOption(0, "Electronic Shutter Mode", enableElectronicShutterMode);
+
+  uart_printf("[ML] Number of options: %d", _numOptions);
+
   while(true) {
-    memset(_pRgbaBuffer, 0xFF, rgbaSize);
-    lcdPrintf(50, 125, "ring buffer tail index : %d", mpu_recv_ring_buffer_tail);
+    dispatchMpu();
 
-    dispatch_mpu();
-    drawUptime();
-
-    uint8_t** ppCurrentBufferIndex = 0xE0255234;
-    uint8_t* pCurrentBufferIndex = (*ppCurrentBufferIndex) - 0xC;
-
-    // uart_printf("[ML] current buffer index: [%p - 0xC] -> [%p] -> %d\n", *ppCurrentBufferIndex, pCurrentBufferIndex, *pCurrentBufferIndex);
-    uint32_t* pMarvBase = 0xE0255238;
-    struct MARV** ppMarv = *pMarvBase - 0x5c + 0 * 0x28 + (1 - *pCurrentBufferIndex) * 4;
-    struct MARV* pMarv = *ppMarv;
-
-    // uart_printf("[ML] pMarv: %p\n", pMarv);
-
-    if (!pMarv) {
-      uart_printf("[ML] VRAM buffer not available. Is camera off!? Exitting task...");
-      return;
-    }
-
-    // uart_printf("[ML] MARV: [%p] -> [%p]\n", pMarv, pMarv->bitmap_data);
-    // uart_printf("[ML] Resolution: %dx%d\n", pMarv->width, pMarv->height);
-
-    if (pMarv->bitmap_data == _pVram1 || pMarv->bitmap_data == _pVram2) {
-      if (_displayMenu)
-        bgra2uyvyaa(pMarv->bitmap_data, _pRgbaBuffer);
-    }
-    else
-      uart_printf("[ML]: error: Invalid frame buffer: %p\n", pMarv->bitmap_data);
+    if (_displayMenu)
+      renderMenu();
 
     led_blink(2, 50, 50);
 

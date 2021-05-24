@@ -28,19 +28,25 @@ extern int uart_printf(const char * fmt, ...);
 extern void * _alloc_dma_memory(size_t);
 extern void _free_dma_memory(void *);
 
-#define FIO_CreateFile _FIO_CreateFile
+// #define FIO_CreateFile _FIO_CreateFile
 extern FILE* _FIO_CreateFile(const char* filename );
 
-#define FIO_GetFileSize _FIO_GetFileSize
+extern FILE* _FIO_OpenFile(const char* pFileName, uint32_t mode);
+
+extern int _FIO_ReadFile(FILE* pFile, void* pBuffer, size_t count);
+
+// #define FIO_GetFileSize _FIO_GetFileSize
 extern int _FIO_GetFileSize(const char * filename, uint32_t * size);
 
-#define FIO_WriteFile _FIO_WriteFile
+// #define FIO_WriteFile _FIO_WriteFile
 extern int _FIO_WriteFile( FILE* stream, const void* ptr, size_t count );
 
-#define FIO_RemoveFile _FIO_RemoveFile
+// #define FIO_RemoveFile _FIO_RemoveFile
 extern int _FIO_RemoveFile(const char * filename);
 
 extern int FIO_Flush(const char * filename);
+
+extern int _FIO_RenameFile(const char* pSrc, const char* pDst);
 
 // Micro ML
 
@@ -211,19 +217,34 @@ static void drawOptions() {
     lcdPrintf(10, 100, "%s: %s", _options[i].pName, _options[i].enabled ? "On" : "Off");
 }
 
+// sht_EnableManualSilent and sht_DisableManualSilent do call po.ignore and
+// po.respect in a wrong way which leads to a crash on camera when not executed
+// via UART or Canon Basic. Those functions do expect a null terminated list of
+// strings. In canon code this null element is missing which leads to undefined
+// behaviour.
+//
+// This implementations calls them in the proper way:
+
+void (*setPoProlog)(int ignore) = 0xe05ad60b;
+int (*setPo)(char** ppPoSetList, uint ignore) = 0xe05fd6f1;
+
+static void sht_EnableManualSilentFixed() {
+  setPoProlog(1);
+  call("po.ignore", "MECHA", 0);
+}
+
+static void sht_DisableManualSilentFixed() {
+  setPoProlog(0);
+  call("po.respect", "MECHA", 0);
+}
+
 static void enableElectronicShutterMode(bool enable) {
   uart_printf("enableElectronicShutterMode; %d\n", enable);
 
-  // does crash!?:
-  /*
-  void (*sht_EnableManualSilent)(void) = 0xe0054855;
-  void (*sht_DisableManualSilent)(void) = 0xe0054841;
-
   if (enable)
-    call("sht_EnableManualSilent", 0);
+    sht_EnableManualSilentFixed();
   else
-    call("sht_DisableManualSilent", 0);
-  */
+    sht_DisableManualSilentFixed();
 }
 
 static void onToggleMenuOption(int optionNo) {
@@ -248,6 +269,10 @@ static void onToggleMenuOption(int optionNo) {
 
 static void onButtonPress(uint8_t buttonId, bool press) {
   const char* pButtonName = "undefined";
+
+  // only allow trashcan button, if menu is not open:
+  if (!_displayMenu && buttonId != 0x11)
+    return;
 
   switch (buttonId) {
     case 0x05: pButtonName = "Sw1 (half shutter)"; break;
@@ -369,7 +394,7 @@ static void dispatchMpu() {
 
     uint8_t pMpuMsg[105];
     mpu_decode(pCurMsg, pMpuMsg, sizeof(pMpuMsg));
-    uart_printf("[ML] <%d> *** mpu_recv(%s)\n", _last_tail, pMpuMsg);
+    // uart_printf("[ML] <%d> *** mpu_recv(%s)\n", _last_tail, pMpuMsg);
   }
 }
 
@@ -386,8 +411,481 @@ static void addOption(int optionNo, const char* pName, OptionEnableCallback_t pO
   uart_printf("Added option %d: %s with callback 0x%X\n", optionNo, pName , pOptionEnableCallback);
 }
 
+typedef enum WlanSettingsMode_t {
+  ADHOC_WIFI=1,
+  INFRA=2,
+  ADHOC_G=3
+} WlanSettingsMode_t;
+
+typedef enum WlanSettingsAuthMode_t {
+  OPEN=0,
+  SHARED=1,
+  WPA2PSK=5,
+  BOTH=6
+} WlanSettingsAuthMode_t;
+
+typedef enum WlanSettingsCipherMode_t {
+  NONE=0,
+  WEP=1,
+  AES=4
+} WlanSettingsCipherMode_t;
+
+typedef struct {
+  int a;                       // set to 0
+  int mode;
+  int modeSomething;           // set to 0 on INFRA
+  char pSSID[36];
+  int channel;
+  int authMode;
+  int cipherMode;
+  int f;                       // set to 0
+  int g;                       // set to 6 when using INFRA or BOTH
+  char pKey[63];
+  unsigned char pUnknown[121]; // set to 0
+} WlanSettings_t;
+
+// Socket
+
+int* (*errno_get_pointer_to)(void) = 0xe0288785;
+
+void printError(const char* pErrorMsg) {
+  uart_printf("Error [%d]; %s\n", *errno_get_pointer_to(), pErrorMsg);
+}
+
+#define DRY_AF_INET 1
+#define DRY_SOCK_STREAM 1
+#define DRY_INADDR_ANY 0 // TODO: verify!
+#define DRY_SOL_SOCKET 0xFFFF
+#define DRY_SO_REUSEADDR 0x8004 // TODO: verify!
+#define DRY_SO_REUSEPORT 0x8005 // TODO: verify!
+
+#define socklen_t unsigned int
+
+typedef struct {
+  unsigned int s_addr;
+} DryInAddr;
+
+typedef struct {
+  short sin_family;
+  unsigned short sin_port;
+  DryInAddr sin_addr;
+} DrySockaddr_in;
+
+typedef struct {
+  unsigned short sa_family; // address family
+  char sa_data[8]; // protocol address
+} DrySockaddr;
+
+typedef struct {
+  int lo;
+  int hi;
+} DryOpt_t;
+
+uint16_t htons(uint16_t v) {
+  return (v >> 8) | (v << 8);
+}
+
+DryInAddr (*ipStrToIp)(const char* pIpStr) = 0xe0103033;
+
+int (*socket_create)(int domain, int type, int protocol) = 0xe013dc59;
+int (*socket_setsockopt)(int sockfd, int level, int optname, void* optval, socklen_t optlen) = 0xe013de59;
+int (*socket_bind)(int sockfd, DrySockaddr* addr, socklen_t addrlen) = 0xe013dc91;
+int (*socket_listen)(int sockfd, int backlogl) = 0xe013dd05;
+int (*socket_accept)(int sockfd, DrySockaddr* addr, socklen_t* addrlen) = 0xe013dd39;
+int (*socket_connect)(int sockfd, DrySockaddr* addr, socklen_t addrlen) = 0xe013dccb;
+int (*socket_recv)(int sockfd,void* buf, size_t len, int flags) = 0xe013dd73;
+int (*socket_send)(int sockfd,void* buf, size_t len, int flags) = 0xe013ddf9;
+void (*socket_close_caller)(int sockfd) = 0xe01347f5;
+
+// ----
+
+static int wifiConnect() {
+  uart_printf("exec NwLimeOn\n");
+  call("NwLimeOn");
+  uart_printf("exec wlanchk\n");
+  call("wlanchk");
+
+  WlanSettings_t wlanSettings;
+  memset(&wlanSettings, 0, sizeof(wlanSettings));
+
+  wlanSettings.mode = INFRA;
+  wlanSettings.g = 6; // set to 6 when using INFRA or BOTH
+  strcpy(wlanSettings.pSSID, "speedport_2.4 Ghz");
+  wlanSettings.channel = 6;
+  wlanSettings.authMode = WPA2PSK;
+  wlanSettings.cipherMode = AES;
+  strcpy(wlanSettings.pKey, "<Add WiFi Password Here");
+
+  uart_printf("now connecting to '%s' AP...\n", wlanSettings.pSSID);
+
+  int (*wlanconnect)(WlanSettings_t* pWlanSettings) = 0xe040d5b5;
+  int wlanResult = wlanconnect(&wlanSettings);
+
+  uart_printf("wlan connect result: %d\n", wlanResult);
+
+  if (wlanResult != 0)
+    return wlanResult;
+
+  uart_printf("set ip...\n");
+  call("wlanipset", "192.168.1.100");
+
+  return 0;
+}
+
+typedef struct {
+  uint pBitlen[2];
+  uint pH[4];
+  uint8_t pBuffer[64];
+} Md5Ctx;
+
+void (*Md5_Init)(Md5Ctx* pCtx) = 0xe05a73b9;
+void (*Md5_Update)(Md5Ctx* pCtx, void* pData, size_t size) = 0xe05a73db;
+void (*Md5_Final)(Md5Ctx *pCtx, uint8_t* pMd5HashOut) = 0xe05a745f;
+
+int (*Sha256Init)(void** ppSha256Ctx) = 0xe07062e9;
+int (*ShaXUpdate)(void* pCtx, void* pTransformFunction, uint8_t* pData, size_t size) = 0xe07060b1;
+void (*Sha256_Transform)(void* pData, uint32_t* pH) = 0xe073aac5;
+int (*ShaXFinal)(void* pCtx, void* pTransFormFunction, uint8_t* pFinalHash) = 0xe0706047;
+int (*ShaXFree)(void** pCtx) = 0xe0706269;
+
+void (*_reboot)(uint32_t value) = 0xe0579b7f;
+
+static void reboot() {
+  _reboot(0);
+}
+
+typedef struct {
+  uint32_t lo;
+  uint32_t hi;
+} size64_t;
+
+typedef enum {
+  ANNOUNCE_STATUS_OK = 0,
+  ANNOUNCE_STATUS_UNSUPPORTED_VERSION = 1,
+} AnnounceStatus_t;
+
+typedef struct {
+  char pFileName[64];
+  uint64_t fileSize;
+  uint8_t pSha256Hash[32];
+  int protocolVersion;
+} AnnounceFileReqMsg_t;
+
+typedef struct {
+  uint32_t status;
+} AnnounceFileRspMsg_t;
+
+static int createServer(int serverFd, int port) {
+  DryOpt_t opt;
+  opt.lo = 1;
+
+  uart_printf("set socket option1\n");
+
+  if (socket_setsockopt(serverFd, DRY_SOL_SOCKET, DRY_SO_REUSEADDR, &opt, sizeof(opt)) < 0 ) {
+    printError("setsockopt");
+    return 1;
+  }
+
+  uart_printf("set socket option2\n");
+
+  if (socket_setsockopt(serverFd, DRY_SOL_SOCKET, DRY_SO_REUSEPORT, &opt, sizeof(opt)) < 0) {
+    printError("setsockopt");
+    return 1;
+  }
+
+  DrySockaddr_in address;
+  address.sin_family = htons(DRY_AF_INET);
+  address.sin_addr.s_addr = DRY_INADDR_ANY;
+  address.sin_port = htons(port);
+
+  uart_printf("bind at port: %d\n", port);
+
+  if (socket_bind(serverFd, &address, sizeof(address)) < 0) {
+    printError("bind failed");
+    return 1;
+  }
+
+  uart_printf("listen\n");
+
+  if (socket_listen(serverFd, 1) < 0) {
+    printError("listen");
+    return 1;
+  }
+
+  uart_printf("accept\n");
+  uart_printf("now waiting for connection on port %d...\n", port);
+
+  unsigned int addrlen = sizeof(address);
+  int c = socket_accept(serverFd, &address, &addrlen);
+
+  if (c < 0) {
+    printError("accept");
+    return 1;
+  }
+
+  uart_printf("client connected.\n");
+
+  return c;
+}
+
+static int recvRequest(int clientFd, AnnounceFileReqMsg_t* pReq) {
+  // TODO: check for TCP error:
+  socket_recv(clientFd, pReq, sizeof(AnnounceFileReqMsg_t), 0);
+
+  if (pReq->protocolVersion != 1)
+    return ANNOUNCE_STATUS_UNSUPPORTED_VERSION;
+
+  pReq->pFileName[sizeof(pReq->pFileName) -1] = 0;
+
+  uart_printf("File announce message received: \n");
+  uart_printf("File Name: %s\n", pReq->pFileName);
+  uart_printf("File size: %lld\n", pReq->fileSize);
+  uart_printf("SHA-256 Hash: ");
+
+  for (int i = 0; i < sizeof(pReq->pSha256Hash); ++i)
+    uart_printf("%02X", pReq->pSha256Hash[i]);
+
+  uart_printf("\n");
+  uart_printf("Protocol Version: %d\n", pReq->protocolVersion);
+
+  return ANNOUNCE_STATUS_OK;
+}
+
+static int performUpdate(int clientFd) {
+  AnnounceFileReqMsg_t req;
+  AnnounceFileRspMsg_t rsp;
+  rsp.status = recvRequest(clientFd, &req);
+  int sent = socket_send(clientFd, &rsp, sizeof(rsp), 0);
+
+  uart_printf("sent %d bytes\n", sent);
+
+  if (rsp.status == ANNOUNCE_STATUS_UNSUPPORTED_VERSION) {
+    uart_printf("Client protocol version is unsupported! Aborting.\n");
+    return 1;
+  }
+
+  uart_printf("Now receiving file...\n");
+
+  const char* pTempFile = "B:/FILE.TMP";
+
+  _FIO_RemoveFile(pTempFile);
+
+  FILE* pFile = _FIO_CreateFile(pTempFile);
+
+  if (pFile == (FILE*)-1) {
+    printError("Unable to create temporary file!\n");
+    return 1;
+  }
+
+  const size_t recvBufferSize = 1024;
+  uint8_t* pBuffer = _alloc_dma_memory(recvBufferSize);
+
+  uint64_t bytesReceived;
+
+  for (bytesReceived = 0; bytesReceived < req.fileSize;) {
+    int chunkSize = socket_recv(clientFd, pBuffer, recvBufferSize, 0);
+
+    uart_printf("received: %d\n", chunkSize);
+
+    if (chunkSize <= 0) {
+      printError("transmission failed");
+      break;
+    }
+
+    uart_printf("pFile is: 0x%X. now writing\n", pFile);
+
+    int bytesWritten;
+
+    if ((bytesWritten = _FIO_WriteFile(pFile, pBuffer, chunkSize)) != chunkSize) {
+      uart_printf("write to file failed. %d bytes written but expected to write %d!\n", bytesWritten, chunkSize);
+      break;
+    }
+
+    uart_printf("written: %d\n", bytesWritten);
+
+    bytesReceived += chunkSize;
+  }
+
+  _free_dma_memory(pBuffer);
+  pBuffer = 0;
+
+  FIO_CloseFile(pFile);
+
+  uart_printf("Bytes received: %d\n", bytesReceived);
+
+  if (bytesReceived != req.fileSize) {
+     uart_printf("File transmission failed!\n");
+     return 1;
+  }
+
+  uart_printf("File transmission finished!\n");
+
+  int dummy = 42;
+  socket_send(clientFd, &dummy, 1, 0);
+
+  uart_printf("Now checking SHA-256\n");
+
+  size64_t fileSize64 = {0};
+
+  if (_FIO_GetFileSize(pTempFile, &fileSize64) == -1) {
+    uart_printf("failed to get file size! aborting\n");
+    return 1;
+  }
+
+  uint32_t fileSize = fileSize64.lo; // TODO: will break on files bigger than 4GB! Fix!
+
+  void* pSha256Ctx = 0;
+  Sha256Init(&pSha256Ctx);
+
+  uart_printf("file size of reopened file is: %d (lo: %d, hi: %d)\n", fileSize, fileSize64.lo, fileSize64.hi);
+
+  pBuffer = _alloc_dma_memory(recvBufferSize);
+
+  if (!pBuffer) {
+    uart_printf("failed to create SHA-256 working buffer!\n");
+    return 0;
+  }
+
+  uart_printf("Start SHA-256 calc\n");
+
+  pFile = _FIO_OpenFile(pTempFile, O_RDONLY);
+
+  if (pFile == (FILE*)-1) {
+    printError("Unable to reopen temporary file!\n");
+    return 1;
+  }
+
+  uart_printf("reopened pFile=%X\n", pFile);
+
+  int bytesRead;
+  for (bytesRead = 0; bytesRead < fileSize;) {
+    int chunkSize = _FIO_ReadFile(pFile, pBuffer, recvBufferSize);
+
+    if (chunkSize < 0) {
+      uart_printf("error on reading file during SHA-256 check!\n");
+      return 1;
+    }
+
+    uart_printf("read: %d\n", chunkSize);
+    ShaXUpdate(pSha256Ctx, Sha256_Transform, pBuffer, chunkSize);
+
+    bytesRead += chunkSize;
+  }
+
+  _free_dma_memory(pBuffer);
+  FIO_CloseFile(pFile);
+
+  uint8_t pSha256Hash[32];
+  ShaXFinal(pSha256Ctx, Sha256_Transform, pSha256Hash);
+  ShaXFree(&pSha256Ctx);
+
+  uart_printf("SHA-256 calc finish\n");
+  uart_printf("calculated: ");
+
+  for (int i = 0; i < sizeof(pSha256Hash); ++i)
+    uart_printf("%02X", pSha256Hash[i]);
+
+  uart_printf("\n");
+
+  uart_printf("expected: ");
+
+  for (int i = 0; i < sizeof(pSha256Hash); ++i)
+    uart_printf("%02X", req.pSha256Hash[i]);
+
+  uart_printf("\n");
+
+  for (int i = 0; i < sizeof(pSha256Hash); ++i) {
+    if (pSha256Hash[i] != req.pSha256Hash[i]) {
+      uart_printf("Error: SHA-256 checksum mismatch!\n");
+      return -1;
+    }
+  }
+
+  uart_printf("checksum ok\n");
+
+  char pTargetFileName[128];
+  snprintf(pTargetFileName, sizeof(pTargetFileName), "B:/%s", req.pFileName);
+
+  _FIO_RemoveFile(pTargetFileName);
+
+  int error;
+
+  if ((error = _FIO_RenameFile(pTempFile, pTargetFileName)) != 0) {
+    uart_printf("[%d] Error on rename '%s' -> '%s'!\n", error, pTempFile, pTargetFileName);
+    return 1;
+  }
+
+  return 0;
+}
+
+int drysh_ml_update(int argc, char const *argv[]) {
+  int error;
+
+  error = wifiConnect();
+
+  if (error) {
+    printError("connection to wifi failed!\n");
+    return 1;
+  }
+
+  uart_printf("creating socket\n");
+
+  int serverFd;
+
+  if ((serverFd = socket_create(DRY_AF_INET, DRY_SOCK_STREAM, 0)) < 0) {
+    printError("socket failed");
+    return 1;
+  }
+
+  int clientFd = createServer(serverFd, 2342);
+
+  if (clientFd < 0) {
+    printError("Failed to create server");
+    return 1;
+  }
+
+  if ((error = performUpdate(clientFd)) != 0) {
+    printError("Update failed!");
+    return 1;
+  }
+
+  uart_printf("Update successful!\n");
+  uart_printf("Rebooting...\n");
+
+  reboot();
+
+  return 0;
+}
+
+int (*drysh_add_category)(char* pCategoryName) = 0xe06687b5;
+int (*drysh_add_command)(int categoryId, void* pNullUnknown, char* pName, void* pFunction, char* pUsageInfo) = 0xe06688d5;
+
+static void printConvertedProp(uint32_t propertyId) {
+  uint16_t (*PTPS_ReplacePropIDWithPtpID)(int propertyId) = 0xe067d5a3;
+
+  const uint16_t ptpId = PTPS_ReplacePropIDWithPtpID(propertyId);
+  uart_printf("ptpId=0x%04X\n", ptpId);
+}
+
 static void DUMP_ASM microml_task() {
   uart_printf("[ML] Hello from %s!\n", get_current_task_name());
+
+  int hCategory = drysh_add_category("Micro ML");
+  drysh_add_command(hCategory, 0, "ml_update", drysh_ml_update, "Performs an update of autoexec.bin over wifi");
+
+  // msleep(5000);
+
+  // call("dmprint", -1, 0);
+
+  /*
+  int error;
+  if (error = wifiConnect()) {
+    while (1)
+      ;
+  }
+
+  xmitDiscord();
+  */
 
   _pRgbaBuffer = malloc(_rgbaSize);
 
@@ -414,7 +912,7 @@ static void DUMP_ASM microml_task() {
 
     led_blink(2, 50, 50);
 
-    msleep(250);
+    msleep(500);
   }
 }
 

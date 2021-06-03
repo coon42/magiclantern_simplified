@@ -622,6 +622,19 @@ static MENU_UPDATE_FUNC(shuttercount_display)
 }
 #endif
 
+#ifdef FEATURE_SHOW_TOTAL_SHOTS
+static MENU_UPDATE_FUNC(totalshots_display)
+{
+    MENU_SET_VALUE(
+        "%d (%d+%d)",
+        total_shots_count, shutter_count, total_shots_count - shutter_count
+    );
+    MENU_SET_WARNING(
+        MENU_WARN_ADVICE,
+        "May drift a bit - check after restart for acurate values.");
+}
+#endif
+
 #ifdef FEATURE_SHOW_CMOS_TEMPERATURE
 #ifdef EFIC_CELSIUS
 #define FAHRENHEIT (EFIC_CELSIUS * 9 / 5 + 32)
@@ -963,6 +976,15 @@ static struct menu_entry debug_menus[] = {
         .update = shuttercount_display,
         .icon_type = IT_ALWAYS_ON,
         .help = "Number of pics taken + number of LiveView actuations",
+        //.essential = FOR_MOVIE | FOR_PHOTO,
+    },
+#endif
+#ifdef FEATURE_SHOW_TOTAL_SHOTS
+    {
+        .name = "Total Shots",
+        .update = totalshots_display,
+        .icon_type = IT_ALWAYS_ON,
+        .help = "Number of shots, including silent (electronic) shutter",
         //.essential = FOR_MOVIE | FOR_PHOTO,
     },
 #endif

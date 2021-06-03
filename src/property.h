@@ -533,8 +533,11 @@
  *
  * 0x12000002 is also Mecha related (see InitMechaCnt()), I was unable to find
  * the name / purpse.
+ *
+ * PROP_RELEASE_COUNTER counts also silent (electronic) shutter shots.
  */
 #define PROP_MECHA_COUNTER    0x12000001
+#define PROP_RELEASE_COUNTER  0x12000003
 
 #define PROP_AFPOINT 0x8000000A // len=70x8003004F
 

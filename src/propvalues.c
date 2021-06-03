@@ -162,6 +162,7 @@ bool FAST is_movie_mode()
 
 volatile int shutter_count = 0;
 volatile int shutter_count_plus_lv_actuations = 0;
+volatile int total_shots_count = 0;
 #if defined(CONFIG_R) || defined(CONFIG_EOSRP)
 //kitor: maybe all mirrorless, or DIGIC 8+? See comment in property.h
 PROP_HANDLER(PROP_MECHA_COUNTER)
@@ -180,6 +181,11 @@ PROP_HANDLER(PROP_MECHA_COUNTER)
 #endif
 
     shutter_count_plus_lv_actuations = shutter_count;
+}
+//kitor: New on R, total counter including silent shoots.
+PROP_HANDLER(PROP_RELEASE_COUNTER)
+{
+    total_shots_count = buf[0];
 }
 #else
 PROP_HANDLER(PROP_SHUTTER_COUNTER)

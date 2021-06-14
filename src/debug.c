@@ -274,24 +274,206 @@ void guimode_test()
 }
 #endif
 
-static void run_test()
+#ifdef CONFIG_200D
+extern void GetMemoryInformation(uint32_t *, uint32_t *);
+extern char* WinSys_AllocateMemory(uint32_t size);
+extern void WinSys_FreeMemory(void *);
+extern void maybe_read_mpu_logs(void);
+static uint32_t is_hooked = 0;
+static uint32_t intercepted_val = 0;
+static void hook_target()
 {
-#if 0
-    static int dm_toggle = 1;
-    if (dm_toggle)
+    //DryosDebugMsg(0, 15, "in hook code"); // hangs in this context
+    //info_led_blink(3, 150, 150); // also hangs in this context
+    //hook_result = 1; // this is okay
+
+    uint32_t val;
+
+    // r1 contains size to alloc
+    asm __volatile__ (
+        "mov %0, r1" : "=r" (val)
+    );
+
+    intercepted_val = val;
+}
+
+void hook_memoryManager_AllocateMemory()
+{
+/*
+Hook code:
+.syntax unified
+.code 16
+
+hook_function_address:
+    .align 2
+    .word 0x01010101
+ret_address:
+    .word 0x02020202
+
+code:
+    .align 2
+    nop
+    nop
+    nop
+    nop
+    push {r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, lr}
+    ldr r6, hook_function_address
+    blx r6
+
+ret:
+    pop {r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, lr}
+    // do stolen instruction here
+    push { r4, r5, r6, r7, r8, r9, r10, lr  } // from df007a64
+    ldr pc, #ret_address
+
+arm-none-eabi-gcc -c -fPIC -march=armv7-a -mthumb arm_test.S && arm-none-eabi-objdump -drwC arm_test.o
+
+00000008 <code>:
+   8:	bf00      	nop
+   a:	bf00      	nop
+   c:	bf00      	nop
+   e:	bf00      	nop
+  10:	e92d 47ff 	stmdb	sp!, {r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, sl, lr}
+  14:	f85f 6018 	ldr.w	r6, [pc, #-24]	; 0 <hook_function_address>
+  18:	47b0      	blx	r6
+
+0000001a <ret>:
+  1a:	e8bd 47ff 	ldmia.w	sp!, {r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, sl, lr}
+  1e:	e92d 47f0 	stmdb	sp!, {r4, r5, r6, r7, r8, r9, sl, lr}
+  22:	f85f f020 	ldr.w	pc, [pc, #-32]	; 4 <ret_address>
+  26:	bf00      	nop
+*/
+
+    uint32_t stage2_addr = 0xdf00f5c1; // Note thumb bit set on both of these,
+    uint32_t hook_addr = 0xdf007a65;   // when using below, sometimes you must
+                                       // adjust this, sometimes not.
+
+    // setup 2nd stage hook in empty space at 0xdf00f600
+    // (allows 1st stage hook to be shorter, as within 32MB)
+    int *stage2 = (int *)(stage2_addr & 0xfffffffe);
+    *(stage2 + 0) = (uint32_t)hook_target | 0x1; // ensure Thumb bit set
+    *(stage2 + 1) = 0xdf007a69; // addr to jump back to after hook code finished
+
+    *(stage2 + 2) = 0xbf00bf00;
+    *(stage2 + 3) = 0xbf00bf00;
+    *(stage2 + 4) = 0x47ffe92d;
+    *(stage2 + 5) = 0x6018f85f;
+    *(stage2 + 6) = 0xe8bd47b0;
+    *(stage2 + 7) = 0xe92d47ff;
+    *(stage2 + 8) = 0xf85f47f0;
+    *(stage2 + 9) = 0xbf00f020;
+    *(stage2 + 10) = 0xbf00bf00;
+    sync_caches();
+
+// 1st stage hook
+    // insert jump to 2nd stage hook
+
+    // What instruction to hook with depends on whether
+    // the target instruction is Arm or Thumb.  If we used
+    // bx reg we could avoid this, but then we need to
+    // modify more bytes for the hook.
+    //
+    // Here we are hooking Thumb code, and this code is Thumb,
+    // so we can use b.w.  The T4 encoding allows the most range,
+    // 23 bits, +-16MB, 0xfffffe to ff000002
+    //
+    // The encoding is kind of funky, the bits of the branch target
+    // are non-contiguous:
+    // https://developer.arm.com/documentation/ddi0406/cb/Application-Level-Architecture/Instruction-Details/Alphabetical-list-of-instructions/B?lang=en
+    // 
+    // 15 14 13 12 11 10  9  8  7  6  5  4  3  2  1  0|15 14 13 12 11 10  9  8  7  6  5  4  3  2  1  0|
+    // ------------------------------------------------------------------------------------------------
+    //  1  1  1  1  0| S|            imm10            | 1  0|J1| 1|J2|             imm11              |
+    //
+    // I1 = NOT(J1 EOR S);  I2 = NOT(J2 EOR S);  imm32 = SignExtend(S:I1:I2:imm10:imm11:’0’, 32);
+
+    uint32_t hook_instr = 0x9000f000; // all the fixed bits set, NB, words are swapped from above,
+                                      // because Thumb mode is 16-bit little-endian
+    int32_t offset = ((stage2_addr + 10) - hook_addr - 4) / 2; // +8 to skip the consts preceding the stage2 start,
+                                                               // then some of the nop slide "for luck", 
+                                                               // -4 for PC offset in Thumb mode,
+                                                               // /2 because offsets are encoded as 16-bit wide instruction count
+    DryosDebugMsg(0, 15, "raw offset: 0x%x", stage2_addr - hook_addr);
+    uint32_t sign_bit = 0;
+    if (offset < 0)
+        sign_bit = 1 << 10;
+    hook_instr |= sign_bit;
+
+    if (offset > 0x7fffff || offset < -0x7fffff)
     {
-        DryosDebugMsg(0, 15, "Setting level to 0x17");
-        dm_set_store_level(0xe, 0x17); // 0xe is [FAC] class, 17 suppresses mode dial logging
-                                       // as that message happens to be at level 16
-        dm_toggle = 0;
+        DryosDebugMsg(0, 15, "hook too far to encode, offset: 0x%x", offset);
+        goto bail;
+    }
+
+    uint32_t imm11 = offset & 0x7ff; // lowest 11 bits
+    uint32_t imm10 = (offset >> 11) & 0x3ff;
+    hook_instr |= imm10;
+    hook_instr |= (imm11 << 16);
+
+    uint32_t i1 = (offset >> 22) & 0x1;
+    uint32_t i2 = (offset >> 21) & 0x1;
+    uint32_t j1, j2;
+    if (sign_bit)
+    {
+        j1 = i1;
+        j2 = i2;
     }
     else
     {
-        DryosDebugMsg(0, 15, "Setting level to 0x3");
-        dm_set_store_level(0xe, 0x3); // re-enables FAC logging
-        dm_toggle = 1;
+        j1 = i1 ^ 1;
+        j2 = i2 ^ 1;
     }
+    hook_instr |= j1 << (16 + 13);
+    hook_instr |= j2 << (16 + 11);
+
+    // last sanity check!
+    DryosDebugMsg(0, 15, "hook instr to insert: 0x%x", hook_instr);
+    DryosDebugMsg(0, 15, "hook insert at: 0x%x", hook_addr & 0xfffffffe);
+    msleep(1000);
+    //return;
+
+    // activate hook, this will break things if
+    // you did anything wrong
+    *(int *)(hook_addr & 0xfffffffe) = hook_instr;
+    sync_caches();
+    is_hooked = 1;
+    DryosDebugMsg(0, 15, "hook after insert: 0x%x", *(int *)(hook_addr & 0xfffffffe));
+
+bail:
+    return;
+}
 #endif
+
+#if 1
+static void test_task(void *size)
+{
+    DryosDebugMsg(0, 15, " ==== test_task, size: 0x%x", (int)size);
+}
+#endif
+
+static void run_test()
+{
+//    clrscr();
+//    NotifyBox(2000, "It was clicked");
+//    char *mem_struct = *(int *)0x48f8;
+    DryosDebugMsg(0, 15, "run_test fired");
+#if 0
+    if (is_hooked)
+    {
+        DryosDebugMsg(0, 15, "last value seen: 0x%x", intercepted_val);
+    }
+    else
+    {
+        hook_memoryManager_AllocateMemory();
+    }
+    DryosDebugMsg(0, 15, "returned from hooking");
+#endif
+
+#if 1
+    int size = 64 * 1024;
+    task_create("test", 0x1e, size, test_task, (void *)size);
+#endif
+
 }
 
 static void unmount_sd_card()

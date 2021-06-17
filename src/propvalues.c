@@ -162,7 +162,7 @@ bool FAST is_movie_mode()
 
 volatile int shutter_count = 0;
 volatile int shutter_count_plus_lv_actuations = 0;
-#ifdef CONFIG_R
+#if defined(CONFIG_R) || defined(CONFIG_EOSRP)
 //kitor: maybe all mirrorless, or DIGIC 8+? See comment in property.h
 PROP_HANDLER(PROP_MECHA_COUNTER)
 {

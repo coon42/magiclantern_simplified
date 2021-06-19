@@ -181,7 +181,7 @@ SIZE_CHECK_STRUCT( prop_lv_lens, 58 );
 
 #endif
 
-#if defined(CONFIG_R)
+#if defined(CONFIG_R) || defined(CONFIG_EOSRP)
 /* kitor: Modeled after EOS R implementation. EvProc readid is very useful.
  * I collapsed huge chunks of unknown data into arrays for readability. */
 struct prop_lens_static_data {

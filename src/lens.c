@@ -1226,7 +1226,7 @@ PROP_HANDLER( PROP_MVR_REC_START )
     #endif
 }
 
-#if defined(CONFIG_R)
+#if defined(CONFIG_R) || defined(CONFIG_EOSRP)
 PROP_HANDLER( PROP_LENS_STATIC_DATA )
 {
     ASSERT(len == sizeof(struct prop_lens_static_data));

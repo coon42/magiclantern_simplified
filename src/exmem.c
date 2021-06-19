@@ -450,7 +450,7 @@ struct memSuite* _srm_malloc_suite(int num_requested_buffers)
     }
 
 #ifdef CONFIG_DIGIC_678
-    enum BUF_COUNT {BUF_COUNT = 4};
+    enum BUF_COUNT {BUF_COUNT = 1};
     // SJE any higher than 4 on 200D (other D678 untested)
     // and we hit the err case in the later for num_buffers loop,
     // *and* that error case puts DryOS memory management in a bad state

@@ -993,7 +993,7 @@ static void guess_free_mem_task(void *priv, int delta)
     // a task with a too large stack via stack_size_crit()
     // triggers Err 70.  128 it gets glitchy, 256 dies hard.
 //    bin_search(1, 72, stack_size_crit);
-    bin_search(1, 72, stack_size_crit);
+    bin_search(1, 4, stack_size_crit);
 #else
     bin_search(1, 1024, stack_size_crit);
 #endif

@@ -981,6 +981,9 @@ static char memory_map[720];
 /* fixme: find a way to read the free stack memory from DryOS */
 /* current workaround: compute it by trial and error when you press SET on Free Memory menu item */
 static volatile int guess_mem_running = 0;
+
+extern int uart_printf(const char * fmt, ...);
+
 static void guess_free_mem_task(void *priv, int delta)
 {
     /* reset values */
@@ -993,7 +996,7 @@ static void guess_free_mem_task(void *priv, int delta)
     // a task with a too large stack via stack_size_crit()
     // triggers Err 70.  128 it gets glitchy, 256 dies hard.
 //    bin_search(1, 72, stack_size_crit);
-    bin_search(1, 4, stack_size_crit);
+//    bin_search(1, 4, stack_size_crit);
 #else
     bin_search(1, 1024, stack_size_crit);
 #endif
@@ -1039,9 +1042,13 @@ static void guess_free_mem_task(void *priv, int delta)
 
     while(currentChunk)
     {
+        uart_printf("start of loop. currentChunk=%d\n", currentChunk);
+
         chunkAvail = GetSizeOfMemoryChunk(currentChunk);
+        uart_printf("chunkAvail=%d\n", chunkAvail);
+
         chunkAddress = (void*)GetMemoryAddressOfMemoryChunk(currentChunk);
-        printf("shoot buffer: %x ... %x\n", chunkAddress, chunkAddress + chunkAvail - 1);
+        uart_printf("shoot buffer: %x ... %x\n", chunkAddress, chunkAddress + chunkAvail - 1);
 
         int mb = 10*chunkAvail/1024/1024;
         STR_APPEND(shoot_malloc_frag_desc, mb%10 ? "%s%d.%d" : "%s%d", total ? "+" : "", mb/10, mb%10);
@@ -1049,10 +1056,26 @@ static void guess_free_mem_task(void *priv, int delta)
 
         int start = MEMORY_MAP_ADDRESS_TO_INDEX(chunkAddress);
         int width = MEMORY_MAP_ADDRESS_TO_INDEX(chunkAvail);
-        memset(memory_map + start, COLOR_GREEN1, width);
+
+	uart_printf("memset: start=%d, width=%d (last idx=%d / max=%d)\n", start, width,
+                    start + width, sizeof(memory_map));
+
+	// FIXME: writes over array bounds and leads to Err70.
+	//        MEMORY_MAP_ADDRESS_TO_INDEX calculation seems to be wrong!
+//        memset(memory_map + start, COLOR_GREEN1, width);
 
         currentChunk = GetNextMemoryChunk(shoot_suite, currentChunk);
+
+        uart_printf("end of loop\n");
     }
+
+    uart_printf("finish of loop\n");
+
+    // TODO: early return to prevent a crash. Move further to continue.
+    give_semaphore(mem_sem);
+    return;
+    // --
+
     STR_APPEND(shoot_malloc_frag_desc, " MB.");
     ASSERT(max_shoot_malloc_frag_mem == total);
 

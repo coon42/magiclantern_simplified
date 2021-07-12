@@ -183,7 +183,7 @@ THUMB_FN(0xe00e3ab0,  task_trampoline)    // see comment below:
  * task_trampoline_caller will pass task_trampoline+1 as parameter to another
  * function.
  */
-THUMB_FN(0xe03c9888, is_taskid_valid) // function before " CORE : %d\n" string
+THUMB_FN(0xe03c9888, _get_task_info_by_id) // function before " CORE : %d\n" string
 
 /** General FEATURE_VRAM_RGBA stubs **/
 THUMB_FN(0xe010c180, XimrExe);                      // In RefreshVrmsSurface, just before "XimrExe" debug message
@@ -194,6 +194,8 @@ DATA_PTR(   0x12928,  sd_device)                    // Used as parameter in Dryo
 THUMB_FN(0xe06f0358,  _LoadCalendarFromRTC)         // function call after "handle_LOCAL_PLUSMOVIEAUTO_REGIST_HANDLE NewCreate Handle"
                                                     // "Private" as it now has more arguments, needs a wrapper.
 //THUMB_FN(0x,  ErrForCamera_handler)                 // ERR70, ERR80 etc (DlgErrForCamera.c)
+
+NSTUB(    0x40D0,  task_max)
 
 /** Properties **/
 THUMB_FN(0xe0596920, _prop_cleanup)                         // function call after "faChangeCBR(ID=%#lx)" string

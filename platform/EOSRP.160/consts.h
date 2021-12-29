@@ -116,12 +116,14 @@ extern int _WINSYS_BMP_DIRTY_BIT_NEG;
 
 #define WINSYS_BMP_DIRTY_BIT_NEG MEM(&_WINSYS_BMP_DIRTY_BIT_NEG) // WINSYS_BMP_DIRTY_BIT_NEG MEM(0x4444+0x30) // wrong, no idea
 #define FOCUS_CONFIRMATION (*(int*)0) // FOCUS_CONFIRMATION (*(int*)0x4444) // wrong, focusinfo looks really different 50D -> 200D
-#define YUV422_LV_BUFFER_DISPLAY_ADDR 0x0 // it expects this to be pointer to address
+//#define YUV422_LV_BUFFER_DISPLAY_ADDR 0x0 // it expects this to be pointer to address
 #define YUV422_HD_BUFFER_DMA_ADDR 0x0 // it expects this to be shamem_read(some_DMA_ADDR)
-#define YUV422_LV_BUFFER_1 0 // 0x41B00000
-#define YUV422_LV_BUFFER_2 0 // 0x5C000000
-#define YUV422_LV_BUFFER_3 0 // 0x5F600000
-#define YUV422_LV_PITCH 1440
+
+#define YUV422_LV_BUFFER_1 0x9F230000
+#define YUV422_LV_BUFFER_2 0x9F624800
+#define YUV422_LV_BUFFER_3 0x9FA19000
+#define YUV422_LV_PITCH    736
+
 #define LV_BOTTOM_BAR_DISPLAYED 0x0 // wrong, fake bool
 // below definitely wrong, just copied from 50D
 #define FRAME_SHUTTER *(uint8_t*)(MEM(LV_STRUCT_PTR) + 0x56)

@@ -16,3 +16,10 @@
 #define HIJACK_FIXBR_BZERO32           0xE0040152   /* called from cstart */
 #define HIJACK_FIXBR_CREATE_ITASK      0xE00401B4   /* called from cstart */
 #define HIJACK_INSTR_MY_ITASK          0xE00401E4   /* address of init_task passed to create_init_task */
+
+#define GMT_NFUNCS 0x7
+#define GMT_FUNCTABLE 0xe0966418
+
+#define TIMER 0xD020000C
+#define LARGE_RAM 0x7744d800 // Clean HDMI buffer2
+

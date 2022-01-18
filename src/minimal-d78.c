@@ -85,7 +85,8 @@ void printError(const char* pErrorMsg) {
 extern int drysh_ml_update(int argc, char const *argv[]);
 static void DUMP_ASM task_doom()
 {
-    uart_printf("Starting doom!");
+    uart_printf("Starting doom!\n");
+
     D_DoomMain();
 
     while (true) {
@@ -118,8 +119,6 @@ my_task_dispatch_hook(
     struct task *next_task_new      /* only present on new DryOS; old versions use HIJACK_TASK_ADDR */
 )
 {
-    return; // Does crash!?
-
     struct task *next_task = next_task_new;
     if (!next_task)
         return;

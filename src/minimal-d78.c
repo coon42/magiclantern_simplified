@@ -85,20 +85,10 @@ void printError(const char* pErrorMsg) {
 extern int drysh_ml_update(int argc, char const *argv[]);
 static void DUMP_ASM task_doom()
 {
-  uart_printf("in doom task! wating 5s...\n");
-
-  /*
-    while (!bmp_vram_raw())
-    {
-        msleep(100);
-    }
-  */
-
-    msleep(5000);
     uart_printf("Starting doom!");
     D_DoomMain();
-    while (true)
-    {
+
+    while (true) {
         //uart_printf("Hello! I am in a error state so um yeah\n");
         msleep(1000);
     }

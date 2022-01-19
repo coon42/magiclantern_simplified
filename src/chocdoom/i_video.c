@@ -195,24 +195,24 @@ void ml_gui_main_task()
         if (inited)
         {
 
-            //uart_printf("// ML button/event handler EVENT: 0x%x TYPE:0x%x\n", event->param, event->type);
+            uart_printf("// ML button/event handler EVENT: 0x%x TYPE:0x%x\n", event->param, event->type);
             //ignore any GUI_Control options. is it save?
             if (event->type == 1)
             {
-                //uart_printf("// ML button/event handler EVENT: 0x%x TYPE:0x%x\n", event->param, event->type);
+                uart_printf("// ML button/event handler EVENT: 0x%x TYPE:0x%x\n", event->param, event->type);
                 continue;
             }
 
             if (event->type == 0)
             {
-                //uart_printf("// ML button/event handler EVENT: 0x%x TYPE:0x%x\n", event->param, event->type);
+                uart_printf("// ML button/event handler EVENT: 0x%x TYPE:0x%x\n", event->param, event->type);
                 for (int index = 0; index < sizeof(buttonEvents) / sizeof(int); index++)
                 {
                     if (event->param == buttonEvents[index])
                     {
                         if (index % 2)
                         {
-                            //uart_printf("Keydown! 0x%x DoomEvent:0x%x\n",buttonEvents[index-1],buttonMap[(index) >> 1]);
+                            uart_printf("Keydown! 0x%x DoomEvent:0x%x\n",buttonEvents[index-1],buttonMap[(index) >> 1]);
                             Doomevent.type = ev_keydown;
                             Doomevent.data1 = buttonMap[(index) >> 1];
                             Doomevent.data2 = -1;
@@ -222,7 +222,7 @@ void ml_gui_main_task()
                         }
                         else
                         {
-                            // uart_printf("Keyup! 0x%x Index:0x%x\n",buttonEvents[index],(index) >> 1);
+                            uart_printf("Keyup! 0x%x Index:0x%x\n",buttonEvents[index],(index) >> 1);
                             Doomevent.type = ev_keyup;
                             Doomevent.data1 = buttonMap[(index) >> 1];
                             Doomevent.data2 = -1;
@@ -236,7 +236,7 @@ void ml_gui_main_task()
                 {
                     if (event->param == pushbuttonEvents[index])
                     {
-                        //uart_printf(" 0x%x Index:0x%x\n",pushbuttonEvents[index], pushbuttonMap[index]);
+                        uart_printf(" 0x%x Index:0x%x\n",pushbuttonEvents[index], pushbuttonMap[index]);
                         Doomevent.type = ev_keydown;
                         Doomevent.data1 = pushbuttonMap[index];
                         Doomevent.data2 = -1;
@@ -300,13 +300,166 @@ void I_UpdateNoBlit(void)
 {
 }
 
+static void onMpuButtonPress(uint8_t buttonId, int8_t param) {
+  // TODO: check if button is in map first
 
+  // uart_printf("onMpuButtonPress: buttonId=0x%02X, param=0x%02X\n", buttonId, param);
+
+  /*
+  menu:                       0x0E
+  up:                         0x15
+  down:                       0x16
+  right:                      0x17
+  left:                       0x18
+
+  Q/set:                      0x0D
+  shutter:                    0x06
+
+
+  int buttonMap[] = {KEY_FIRE, KEY_UPARROW, KEY_DOWNARROW, KEY_LEFTARROW, KEY_RIGHTARROW};
+
+  int pushbuttonEvents[] = {BGMT_PLAY, BGMT_MENU, BGMT_INFO};
+  int pushbuttonMap[] = {KEY_ENTER, KEY_ESCAPE, 'y'};
+  */
+
+#define MPU_BUTTON_HALF_SHUTTER 0x05
+#define MPU_BUTTON_SHUTTER 0x06
+#define MPU_BUTTON_Q 0x0D
+#define MPU_BUTTON_MENU 0x0E
+#define MPU_BUTTON_INFO 0x10
+#define MPU_BUTTON_UP 0x15
+#define MPU_BUTTON_DOWN 0x16
+#define MPU_BUTTON_RIGHT 0x17
+#define MPU_BUTTON_LEFT 0x18
+#define MPU_QUICK_CONTROL_DIAL 0x1A
+
+#define SPIN_CLOCKWISE 0xFF
+#define SPIN_ANTI_CLOCKWISE 0x01
+
+  event_t Doomevent;
+  Doomevent.data2 = -1;
+  Doomevent.data3 = -1;
+
+  if (param == 1)
+    Doomevent.type = ev_keydown;
+  else
+    Doomevent.type = ev_keyup;
+
+  if (buttonId == MPU_BUTTON_MENU) {
+    Doomevent.data1 = KEY_ESCAPE;
+     D_PostEvent(&Doomevent);
+  }
+
+  if (buttonId == MPU_BUTTON_HALF_SHUTTER || buttonId == MPU_BUTTON_SHUTTER) {
+    Doomevent.data1 = KEY_FIRE;
+    D_PostEvent(&Doomevent);
+  }
+
+  if (buttonId == MPU_BUTTON_Q) {
+    Doomevent.data1 = KEY_ENTER;
+    D_PostEvent(&Doomevent);
+  }
+
+ if (buttonId == MPU_BUTTON_INFO) {
+    Doomevent.data1 = KEY_USE;
+    D_PostEvent(&Doomevent);
+  }
+
+  if (buttonId == MPU_BUTTON_Q) {
+    Doomevent.data1 = KEY_USE;
+    D_PostEvent(&Doomevent);
+  }
+
+  if (buttonId == MPU_BUTTON_UP) {
+    Doomevent.data1 = KEY_UPARROW;
+    D_PostEvent(&Doomevent);
+  }
+
+  if (buttonId == MPU_BUTTON_DOWN) {
+    Doomevent.data1 = KEY_DOWNARROW;
+    D_PostEvent(&Doomevent);
+  }
+
+  if (buttonId == MPU_BUTTON_LEFT) {
+    Doomevent.data1 = KEY_LEFTARROW;
+    D_PostEvent(&Doomevent);
+  }
+
+  if (buttonId == MPU_BUTTON_RIGHT) {
+    Doomevent.data1 = KEY_RIGHTARROW;
+    D_PostEvent(&Doomevent);
+  }
+
+  if (buttonId == MPU_QUICK_CONTROL_DIAL) {
+    if (global_next_weapon) {
+      if (screenvisible) {
+        *global_next_weapon = 1;
+      }
+    }
+  }
+
+/*
+  switch (buttonId) {
+    Doomevent.type = ev_keydown;
+    Doomevent.data1 = buttonMap[(index) >> 1];
+    Doomevent.data2 = -1;
+    Doomevent.data3 = -1;
+    D_PostEvent(&Doomevent);
+  }
+*/
+}
+
+static void mpu_decode(const char* in, char* out, int max_len) {
+  int len = 0;
+  int size = (unsigned char) in[0];
+
+  /* print each byte as hex */
+  for (const char * c = in; c < in + size; c++)
+    len += snprintf(out+len, max_len-len, "%02x ", *c);
+
+  /* trim the last space */
+  if (len)
+    out[len-1] = 0;
+}
+
+// --
+extern const char* const mpu_recv_ring_buffer[105];
+extern const int mpu_recv_ring_buffer_tail;
+
+static void dispatchMpu() {
+//  uart_printf("dispatchMpu\n");
+
+  static int _last_tail = 0;
+  const max_mpu_recv = 80; // see RP 1.6.0: 0xe009b2ce
+  const int diff = mpu_recv_ring_buffer_tail - _last_tail;
+  const int numNewMpuMessages = diff >= 0 ? diff : diff + max_mpu_recv;
+
+  for (int i = 0; i < numNewMpuMessages; ++i) {
+    const uint8_t* pCurMsg = &mpu_recv_ring_buffer[_last_tail][4];
+    const int msgId = pCurMsg[2];
+
+    if (msgId == 0x03) {
+      const int buttonId = pCurMsg[3];
+      const int buttonParam = pCurMsg[4];
+
+      onMpuButtonPress(buttonId, buttonParam);
+    }
+
+    _last_tail = (_last_tail + 1) % max_mpu_recv;
+
+    uint8_t pMpuMsg[105];
+    mpu_decode(pCurMsg, pMpuMsg, sizeof(pMpuMsg));
+    // uart_printf("[ML] <%d> *** mpu_recv(%s)\n", _last_tail, pMpuMsg);
+  }
+}
 
 //7% increese in speed with unrolling
 //TODO: find a better way to refill the VRAM buffer
 //send help now this is too bad
 void I_FinishUpdate(void)
 {
+    dispatchMpu();
+
     extern void* _pXCM;
     void* XCM_GetSourceSurface (void* pXmirContext, int layer);
 

@@ -83,9 +83,32 @@ void printError(const char* pErrorMsg) {
   uart_printf(pErrorMsg);
 }
 extern int drysh_ml_update(int argc, char const *argv[]);
+
+/*
+int buttonEvents[] = {
+  MPU_Q_SET_UNPRESS
+  MPU_Q_SET
+  MPU_UNPRESS_UP
+  MPU_PRESS_UP
+  MPU_UNPRESS_DOWN
+  MPU_PRESS_DOWN
+  MPU_UNPRESS_LEFT
+  MPU_PRESS_LEFT
+  MPU_UNPRESS_RIGHT
+  MPU_PRESS_RIGHT
+};
+
+int buttonMap[] = {KEY_FIRE, KEY_UPARROW, KEY_DOWNARROW, KEY_LEFTARROW, KEY_RIGHTARROW};
+*/
+
+int (*uiLock)(int doLock_maybe, int param_2, int param_3) = 0xe044b1e9;
+
 static void DUMP_ASM task_doom()
 {
     uart_printf("Starting doom!\n");
+    msleep(2000);
+
+    uiLock(1, 0, 2);
 
     D_DoomMain();
 
@@ -119,6 +142,11 @@ my_task_dispatch_hook(
     struct task *next_task_new      /* only present on new DryOS; old versions use HIJACK_TASK_ADDR */
 )
 {
+  // using gui button handler does not work properly for RP yet.
+  // reading buttons directly from MPU queue instead.
+
+  return;
+
     struct task *next_task = next_task_new;
     if (!next_task)
         return;
@@ -126,6 +154,7 @@ my_task_dispatch_hook(
     struct context *context = next_task->context;
     if (!context)
         return;
+
     // Do nothing unless a new task is starting via the trampoile
     if (context->pc != (uint32_t)task_trampoline)
         return;
@@ -151,6 +180,7 @@ void boot_post_init_task(void)
     msleep(1000);
     inited = 1;
     task_create("DOOM", 0x1f, 0x1000, task_doom, 0);
+
     #if defined(SSID) && defined(PASS) && defined(IP)
     task_create("Updater",0x10,0x1000,task_update,0);
     #endif

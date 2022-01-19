@@ -867,11 +867,78 @@ static void printConvertedProp(uint32_t propertyId) {
   uart_printf("ptpId=0x%04X\n", ptpId);
 }
 
+typedef enum {
+  ML_PROP_ID = 0x1337,
+} PtpPropertyId_t;
+
+typedef enum {
+  UNDEF = 0x0,
+  INT8  = 0x1,
+  UINT8 = 0x2
+} PtpPropertyType_t;
+
+typedef struct {
+  uint32_t unknown4;
+  uint16_t ptpPropertyId;
+  uint16_t type;
+  uint32_t unknown1;
+  void* pCbr1;
+  void* pCbr2;
+  uint32_t unknown2;
+  void* pCbr3;
+  uint32_t unknown5;
+  uint32_t unknown6;
+  uint32_t unknown7;
+  void* pCbr4;
+} PtpPropertyDescriptor_t;
+
+uint register_ptp_property(PtpPropertyDescriptor_t* pPtpPropDescriptor, int distDeviceInfoChanged);
+
+static int ptpPropHandler1(uint32_t unknown1, uint32_t* pUnknown2, uint32_t unknown3, uint32_t* pUnknown4) {
+  uart_printf("Prop 1 handler: %d; ", *pUnknown2);
+
+  *pUnknown2 = 1234;
+  *pUnknown4 = 1;
+}
+
+static int ptpPropHandler2(uint32_t unknown1, uint32_t* pUnknown2, uint32_t unknown3, uint32_t* pUnknown4) {
+  uart_printf("Prop 2 handler: %d; ", *pUnknown2);
+
+  *pUnknown2 = 20;
+  *pUnknown4 = 1;
+}
+
+static int ptpPropHandler3(uint32_t unknown1, uint32_t* pUnknown2, uint32_t unknown3, uint32_t* pUnknown4) {
+  uart_printf("Prop 3 handler: %d; ", *pUnknown2);
+
+  *pUnknown2 = 30;
+  *pUnknown4 = 1;
+}
+
+static int ptpPropHandler4(uint32_t unknown1, uint32_t* pUnknown2, uint32_t unknown3, uint32_t* pUnknown4) {
+  uart_printf("Prop 4 handler: %d; ", *pUnknown2);
+
+  *pUnknown2 = 40;
+  *pUnknown4 = 1;
+}
+
 static void DUMP_ASM microml_task() {
   uart_printf("[ML] Hello from %s!\n", get_current_task_name());
 
   int hCategory = drysh_add_category("Micro ML");
   drysh_add_command(hCategory, 0, "ml_update", drysh_ml_update, "Performs an update of autoexec.bin over wifi");
+
+  PtpPropertyDescriptor_t pd;
+  pd.pCbr1 = ptpPropHandler1;
+  pd.pCbr2 = ptpPropHandler2;
+  pd.pCbr3 = ptpPropHandler3;
+  pd.pCbr4 = ptpPropHandler4;
+  pd.ptpPropertyId = 0x1337;
+  pd.unknown1 = 0;
+  pd.unknown2 = 0;
+  pd.type = UINT8;
+
+  register_ptp_property(&pd, 0);
 
   // msleep(5000);
 

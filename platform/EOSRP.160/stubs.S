@@ -139,3 +139,11 @@ THUMB_FN(0xE0594E70, _free_dma_memory)                 // opposite of the above
 // THUMB_FN(0xE0587F74,  LedOn)
 // THUMB_FN(0xE0587f94,  LedOff)
 // THUMB_FN(0xE057B450,  CreateEvent)                     // TODO: verify!
+
+//*************************************************************************************************************
+// Custom
+//*************************************************************************************************************
+
+/** Optional for custom code **/
+THUMB_FN(0xE068D3B0, register_ptp_property)
+

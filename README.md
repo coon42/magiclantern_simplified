@@ -1,16 +1,22 @@
 For EOSRP.160 using [stm32doom](https://github.com/floppes/stm32doom)
 
-Important!
+** Important! Before you start, please follow these steps or you may damage your camera! **
+** The camera MUST NOT be set to clean HDMI mode! **
 
-- Set camera to Movie Mode
-- Enter `HDMI info disp` menu and set it to `With info`
-  - The code of Doom and Magic Lantern is loaded to the 4K clean HDMI buffers. If you set your camera to clean HDMI mode,
-    code will get overwritten by cameras rendering code and will execute random instructions, which may damage your camera.
-- Set camera to Manual mode and keep it in this mode to play Doom.
+- Disable Clean HDMI mode
+  - Set camera to Movie Mode
+  - Enter `HDMI info disp` menu and set it to `With info`
+    - The code of Doom and Magic Lantern is loaded into the 4K clean HDMI buffers. If you set your camera to clean HDMI mode,
+      code will get overwritten by cameras rendering code and will execute random instructions, which may damage your camera.
+  - Set camera to Manual mode and keep it in this mode to play Doom.
 
-- Update your cameras firmware to version 1.6.0
+- Ensure that your camera firmware version is 1.6.0 (It won't work with other versions)
 
-- Enable SCRIPT and BOOT flag in camera
+- Enable Bootflag in camera
+  - Copy `script.req` file and `extend.m` file to SD cards root directory
+  - Start camera and press the play button (left to the trashcan button) 
+
+- Enable SCRIPT and BOOT flag on SD card:
   - To do so, you can use this tool on Windows: https://chdk.fandom.com/wiki/EOScard
   
 - Format an SD card in camera

@@ -33,8 +33,6 @@ To compile:
 cd platform/EOSRP.160
 make clean && make -j4
 
-- copy `autoexec.bin` to SD cards root directory
-
 Attributions:
 
 -[kitor](https://github.com/kitor)

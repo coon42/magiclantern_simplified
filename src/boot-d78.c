@@ -7,6 +7,7 @@
 
 /** These are called when new tasks are created */
 static int my_init_task(int a, int b, int c, int d);
+extern int early_uart_printf(const char * fmt, ...);
 
 /** This just goes into the bss */
 #define RELOCSIZE 0x1000 // look in HIJACK macros for the highest address, and subtract ROMBASEADDR
@@ -40,8 +41,8 @@ static inline uint32_t thumb_branch_instr(uint32_t pc, uint32_t dest, uint32_t o
 
 /** Fix a branch instruction in the relocated firmware image */
 #define FIXUP_BRANCH( rom_addr, dest_addr ) \
-    qprint("[BOOT] fixing up branch at "); qprintn((uint32_t) &INSTR( rom_addr )); \
-    qprint(" (ROM: "); qprintn(rom_addr); qprint(") to "); qprintn((uint32_t)(dest_addr)); qprint("\n"); \
+    early_uart_printf("[BOOT] fixing up branch at 0x%08x", &INSTR( rom_addr )); \
+    early_uart_printf(" (ROM: 0x%08x) to 0x%08x\n", rom_addr, dest_addr); \
     INSTR( rom_addr ) = THUMB_BL_INSTR( &INSTR( rom_addr ), (dest_addr) )
 
 static void my_bzero32(void* buf, size_t len)
@@ -68,7 +69,6 @@ static void my_icache_invalidate(uint32_t addr, uint32_t size, uint32_t keep1, u
     icache_invalidate(addr, size, keep1, keep2);
 }
 
-
 void
 __attribute__((noreturn,noinline,naked))
 copy_and_restart( int offset )
@@ -92,10 +92,10 @@ copy_and_restart( int offset )
     // the malloc heap is specified as start + size (not start + end)
     // easiest way is to reduce its size and load ML right after it
     ml_reserved_mem = 0x46000;
-    qprint("[BOOT] reserving memory: "); qprintn(ml_reserved_mem); qprint("\n");
-    qprint("before: user_mem_size = "); qprintn(INSTR(HIJACK_INSTR_HEAP_SIZE)); qprint("\n");
+    early_uart_printf("[BOOT] reserving memory: %d\n", ml_reserved_mem);
+    early_uart_printf("before: user_mem_size = %d\n", INSTR(HIJACK_INSTR_HEAP_SIZE));
     INSTR( HIJACK_INSTR_HEAP_SIZE ) -= ml_reserved_mem;
-    qprint(" after: user_mem_size = "); qprintn(INSTR(HIJACK_INSTR_HEAP_SIZE)); qprint("\n");
+    early_uart_printf(" after: user_mem_size = %d\n", INSTR(HIJACK_INSTR_HEAP_SIZE));
 
     // Fix cache maintenance calls before cstart
     FIXUP_BRANCH( HIJACK_FIXBR_DCACHE_CLN_1, my_dcache_clean );
@@ -115,8 +115,8 @@ copy_and_restart( int offset )
     /* the second one is called only when running on CPU1; assuming our code only runs on CPU0 */
 
     // Set our init task to run instead of the firmware one
-    qprint("[BOOT] changing init_task from "); qprintn(INSTR( HIJACK_INSTR_MY_ITASK ));
-    qprint("to "); qprintn((uint32_t) my_init_task); qprint("\n");
+    early_uart_printf("[BOOT] changing init_task from 0x%08x", INSTR(HIJACK_INSTR_MY_ITASK));
+    early_uart_printf(" to 0x%08x\n", my_init_task);
     INSTR( HIJACK_INSTR_MY_ITASK ) = (uint32_t) my_init_task;
 
     // Make sure that our self-modifying code clears the cache
@@ -124,7 +124,7 @@ copy_and_restart( int offset )
 
     // jump to Canon firmware (Thumb code)
     thunk __attribute__((long_call)) reloc_entry = (thunk)( RELOCADDR + 1 );
-    qprint("[BOOT] jumping to relocated startup code at "); qprintn((uint32_t) reloc_entry); qprint("\n");
+    early_uart_printf("[BOOT] jumping to relocated startup code at 0x%08x\n", reloc_entry);
     reloc_entry();
 
     // Unreachable

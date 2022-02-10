@@ -94,6 +94,8 @@ typedef union {
   uint32_t val;
 } YuvColor;
 
+#if 0
+
 static void bgra2uyvyaa(uint8_t* pYuv, const uint8_t* pRgba) {
   for (int y = 0; y < _yRes; ++y) {
     for (int x = 0; x < _xRes / 2; ++x) {
@@ -167,8 +169,11 @@ void lcdPrintf(int x, int y, char* pFormat, ...) {
   va_end(args);
 }
 
+#endif // 0
+
 // used by font_draw:
 void disp_set_pixel(int x, int y, int c) {
+#if 0
   const int rgbIdx = 4 * y * _xRes + 4 * x;
 
   if (!_pRgbaBuffer)
@@ -183,8 +188,10 @@ void disp_set_pixel(int x, int y, int c) {
   _pRgbaBuffer[rgbIdx + 1] = g;
   _pRgbaBuffer[rgbIdx + 2] = r;
   _pRgbaBuffer[rgbIdx + 3] = a;
+#endif
 }
 
+#if 0
 static void displayMenu(bool display) {
   if (display) {
     if (!uiLock(1, 0, 2))
@@ -867,8 +874,19 @@ static void printConvertedProp(uint32_t propertyId) {
   uart_printf("ptpId=0x%04X\n", ptpId);
 }
 
+#endif // 0
+
+unsigned int (*register_ptp_cmd_handler)(int cmd_id, void* pHandler, int distDeviceInfoChanged) = 0xe06d3fbb;
+
 static void DUMP_ASM microml_task() {
   uart_printf("[ML] Hello from %s!\n", get_current_task_name());
+
+  call("dmprint", -1, 0);
+  call("dmstore", 37, 0); // PTP
+
+  register_ptp_cmd_handler(0x9052, 0xe06321af, 0);
+
+#if 0
 
   int hCategory = drysh_add_category("Micro ML");
   drysh_add_command(hCategory, 0, "ml_update", drysh_ml_update, "Performs an update of autoexec.bin over wifi");
@@ -914,6 +932,8 @@ static void DUMP_ASM microml_task() {
 
     msleep(500);
   }
+
+#endif // 0
 }
 
 void ml_assert_handler(char* msg, char* file, int line, const char* func) { };

@@ -49,6 +49,7 @@ THUMB_FN(0xE058F77A,  msleep)                          /* argument is always mul
 THUMB_FN(0xE05DA6C2,  task_create)                     /* used to start TaskMain, GuiMainTask etc */
 
 /** Misc (Optional) **/
+THUMB_FN(0xE000BE8E,  early_uart_printf)                       // The function which prints Now jump to AUTOEXEC.BIN!!!
 THUMB_FN(0xE059100C,  uart_printf)                     // The function which prints Kxxx READY.
 // THUMB_FN(0xe03b714A,  snprintf) // crashes on cam!?
 THUMB_FN(0xE006C3B8,  vsnprintf)                       // prints "!!! ERROR !!!\n" on uart.

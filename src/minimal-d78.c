@@ -876,15 +876,11 @@ static void printConvertedProp(uint32_t propertyId) {
 
 #endif // 0
 
-unsigned int (*register_ptp_cmd_handler)(int cmd_id, void* pHandler, int distDeviceInfoChanged) = 0xe06d3fbb;
-
 static void DUMP_ASM microml_task() {
   uart_printf("[ML] Hello from %s!\n", get_current_task_name());
 
   call("dmprint", -1, 0);
   call("dmstore", 37, 0); // PTP
-
-  register_ptp_cmd_handler(0x9052, 0xe06321af, 0);
 
 #if 0
 

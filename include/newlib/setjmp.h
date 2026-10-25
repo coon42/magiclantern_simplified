@@ -11,7 +11,7 @@
 
 _BEGIN_STD_C
 
-void	_EXFUN(longjmp,(jmp_buf __jmpb, int __retval));
+void	_EXFUN(longjmp,(jmp_buf __jmpb, int __retval)) __attribute__ ((__noreturn__));
 int	_EXFUN(setjmp,(jmp_buf __jmpb));
 
 _END_STD_C

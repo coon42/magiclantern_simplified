@@ -163,13 +163,10 @@ void* edmac_copy_rectangle_cbr_start(void* dst, void* src,
     uint32_t dst_adjusted = ((uint32_t)dst & 0x1FFFFFFF) + dst_x + dst_y * dst_width;
 
     /* only read channel will emit a callback when reading from memory is done. write channels would just continue */
-    RegisterEDmacCompleteCBR(edmac_read_chan, cbr_r, cbr_ctx);
-    RegisterEDmacAbortCBR(edmac_read_chan, cbr_r, cbr_ctx);
-    RegisterEDmacPopCBR(edmac_read_chan, cbr_r, cbr_ctx);
-    RegisterEDmacCompleteCBR(edmac_write_chan, cbr_w, cbr_ctx);
-    RegisterEDmacAbortCBR(edmac_write_chan, cbr_w, cbr_ctx);
-    RegisterEDmacPopCBR(edmac_write_chan, cbr_w, cbr_ctx);
-    
+    edmac_set_cbr(edmac_read_chan, cbr_r, cbr_ctx);
+    edmac_set_cbr(edmac_write_chan, cbr_w, cbr_ctx);
+
+
     /* connect the selected channels to 6 so any data read from RAM is passed to write channel */
     ConnectWriteEDmac(edmac_write_chan, dmaConnection);
     ConnectReadEDmac(edmac_read_chan, dmaConnection);
@@ -204,12 +201,8 @@ void* edmac_copy_rectangle_cbr_start(void* dst, void* src,
 void edmac_copy_rectangle_adv_cleanup()
 {
     /* set default CBRs again and stop both DMAs */
-    UnregisterEDmacCompleteCBR(edmac_read_chan);
-    UnregisterEDmacAbortCBR(edmac_read_chan);
-    UnregisterEDmacPopCBR(edmac_read_chan);
-    UnregisterEDmacCompleteCBR(edmac_write_chan);
-    UnregisterEDmacAbortCBR(edmac_write_chan);
-    UnregisterEDmacPopCBR(edmac_write_chan);
+    edmac_clear_cbr(edmac_read_chan);
+    edmac_clear_cbr(edmac_write_chan);
 
     give_semaphore(edmac_memcpy_sem);
 }
@@ -391,9 +384,7 @@ static void edmac_slurp_complete_cbr (void* ctx)
 {
     /* set default CBRs again and stop both DMAs */
     /* idk what to do with those; if I uncomment them, the camera crashes at startup in movie mode with raw_rec enabled */
-    //~ UnregisterEDmacCompleteCBR(raw_write_chan);
-    //~ UnregisterEDmacAbortCBR(raw_write_chan);
-    //~ UnregisterEDmacPopCBR(raw_write_chan);
+    //~ edmac_clear_cbr(raw_write_chan);
 }
 
 void edmac_raw_slurp(void* dst, int w, int h)
@@ -408,10 +399,9 @@ void edmac_raw_slurp(void* dst, int w, int h)
 #endif
 
     /* @g3gg0: this callback does get called */
-    RegisterEDmacCompleteCBR(raw_write_chan, &edmac_slurp_complete_cbr, 0);
-    RegisterEDmacAbortCBR(raw_write_chan, &edmac_slurp_complete_cbr, 0);
-    RegisterEDmacPopCBR(raw_write_chan, &edmac_slurp_complete_cbr, 0);
-    
+    edmac_set_cbr(raw_write_chan, &edmac_slurp_complete_cbr, 0);
+
+
     /* connect the selected channels to 0 so the raw data from sensor is passed to write channel */
     ConnectWriteEDmac(raw_write_chan, 0);
     

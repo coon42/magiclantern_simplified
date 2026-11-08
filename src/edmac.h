@@ -155,4 +155,10 @@ void UnregisterEDmacCompleteCBR(int channel);
 void UnregisterEDmacAbortCBR(int channel);
 void UnregisterEDmacPopCBR(int channel);
 
+/* Register cbr(ctx) for completion, abort and pop on a channel, i.e. for
+ * every way a transfer can end.  edmac_clear_cbr() restores Canon's
+ * defaults.  The callback runs in interrupt context. */
+void edmac_set_cbr(uint32_t channel, void (*cbr)(void *), void *ctx);
+void edmac_clear_cbr(uint32_t channel);
+
 #endif // _edmac_h_

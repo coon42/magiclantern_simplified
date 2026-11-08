@@ -52,12 +52,8 @@ static void edmac_test_copy(
     dst = CACHEABLE(dst);
     
     /* EDMAC CBRs (to mark the operation as finished) */
-    RegisterEDmacCompleteCBR(edmac_read_chan, &edmac_read_complete_cbr, (void*) &read_done);
-    RegisterEDmacAbortCBR(edmac_read_chan, &edmac_read_complete_cbr, (void*) &read_done);
-    RegisterEDmacPopCBR(edmac_read_chan, &edmac_read_complete_cbr, (void*) &read_done);
-    RegisterEDmacCompleteCBR(edmac_write_chan, &edmac_write_complete_cbr, (void*) &write_done);
-    RegisterEDmacAbortCBR(edmac_write_chan, &edmac_write_complete_cbr, (void*) &write_done);
-    RegisterEDmacPopCBR(edmac_write_chan, &edmac_write_complete_cbr, (void*) &write_done);
+    edmac_set_cbr(edmac_read_chan, &edmac_read_complete_cbr, (void*) &read_done);
+    edmac_set_cbr(edmac_write_chan, &edmac_write_complete_cbr, (void*) &write_done);
     
     /* connect the selected channels to 6 so any data read from RAM is passed to write channel */
     ConnectWriteEDmac(edmac_write_chan, dmaConnection);
@@ -216,12 +212,8 @@ static void edmac_test_copy(
         }
     }
 
-    UnregisterEDmacCompleteCBR(edmac_read_chan);
-    UnregisterEDmacAbortCBR(edmac_read_chan);
-    UnregisterEDmacPopCBR(edmac_read_chan);
-    UnregisterEDmacCompleteCBR(edmac_write_chan);
-    UnregisterEDmacAbortCBR(edmac_write_chan);
-    UnregisterEDmacPopCBR(edmac_write_chan);
+    edmac_clear_cbr(edmac_read_chan);
+    edmac_clear_cbr(edmac_write_chan);
 }
 
 static void Log_md5(void * addr, int size)

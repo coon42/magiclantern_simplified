@@ -83,6 +83,20 @@ uint32_t edmac_channel_to_index(uint32_t channel)
     return -1;
 }
 
+void edmac_set_cbr(uint32_t channel, void (*cbr)(void *), void *ctx)
+{
+    RegisterEDmacCompleteCBR(channel, cbr, ctx);
+    RegisterEDmacAbortCBR(channel, cbr, ctx);
+    RegisterEDmacPopCBR(channel, cbr, ctx);
+}
+
+void edmac_clear_cbr(uint32_t channel)
+{
+    UnregisterEDmacCompleteCBR(channel);
+    UnregisterEDmacAbortCBR(channel);
+    UnregisterEDmacPopCBR(channel);
+}
+
 uint32_t edmac_get_dir(uint32_t channel)
 {
     if (!IS_USED(channel))

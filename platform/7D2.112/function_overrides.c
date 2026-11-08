@@ -252,9 +252,3 @@ void* edmac_copy_rectangle_cbr_start(void *dst, void *src,
 void edmac_copy_rectangle_adv_cleanup()
 {
 }
-
-// SJE FIXME these are only here because mlv_lite module has them as deps,
-// even though the code doesn't use them, since we use m2m_copy func.
-// Needs a cleaner solution.
-uint32_t edmac_read_chan = 0x6; // dummy, don't use
-uint32_t edmac_write_chan = 0x6; // dummy, don't use

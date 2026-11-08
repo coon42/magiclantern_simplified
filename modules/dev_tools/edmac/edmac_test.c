@@ -21,9 +21,7 @@ static int Log(const char * fmt, ...)
     return len;
 }
 
-extern uint32_t edmac_read_chan;
-extern uint32_t edmac_write_chan;
-extern uint32_t dmaConnection;
+/* uses the channels from edmac-memcpy.c */
 
 static void edmac_read_complete_cbr (void* ctx)
 {
@@ -52,23 +50,23 @@ static void edmac_test_copy(
     dst = CACHEABLE(dst);
     
     /* EDMAC CBRs (to mark the operation as finished) */
-    edmac_set_cbr(edmac_read_chan, &edmac_read_complete_cbr, (void*) &read_done);
-    edmac_set_cbr(edmac_write_chan, &edmac_write_complete_cbr, (void*) &write_done);
+    edmac_set_cbr(edmac_copy_read_chan, &edmac_read_complete_cbr, (void*) &read_done);
+    edmac_set_cbr(edmac_copy_write_chan, &edmac_write_complete_cbr, (void*) &write_done);
     
     /* connect the selected channels to 6 so any data read from RAM is passed to write channel */
-    ConnectWriteEDmac(edmac_write_chan, dmaConnection);
-    ConnectReadEDmac(edmac_read_chan, dmaConnection);
+    ConnectWriteEDmac(edmac_copy_write_chan, edmac_copy_connection);
+    ConnectReadEDmac(edmac_copy_read_chan, edmac_copy_connection);
     
     /* set buffers, geometry and flags */
-    SetEDmac(edmac_read_chan,  src, src_info, src_flags);
-    SetEDmac(edmac_write_chan, dst, dst_info, dst_flags);
+    SetEDmac(edmac_copy_read_chan,  src, src_info, src_flags);
+    SetEDmac(edmac_copy_write_chan, dst, dst_info, dst_flags);
     
     /* start transfer. no flags for write, 2 for read channels */
     info_led_on();
     int64_t t0 = get_us_clock();
     
-    StartEDmac(edmac_write_chan, dst_start_flags);
-    StartEDmac(edmac_read_chan,  src_start_flags);
+    StartEDmac(edmac_copy_write_chan, dst_start_flags);
+    StartEDmac(edmac_copy_read_chan,  src_start_flags);
     
     while(!read_done || !write_done)
     {
@@ -89,8 +87,8 @@ static void edmac_test_copy(
     }
 
     /* not always needed, but shouldn't do any harm */
-    AbortEDmac(edmac_read_chan);
-    AbortEDmac(edmac_write_chan);
+    AbortEDmac(edmac_copy_read_chan);
+    AbortEDmac(edmac_copy_write_chan);
 
     int64_t t1 = get_us_clock();
     info_led_off();
@@ -102,8 +100,8 @@ static void edmac_test_copy(
     
     msleep(100);
     
-    uint32_t src_end_addr = edmac_get_current_addr(edmac_read_chan);
-    uint32_t dst_end_addr = edmac_get_current_addr(edmac_write_chan);
+    uint32_t src_end_addr = edmac_get_current_addr(edmac_copy_read_chan);
+    uint32_t dst_end_addr = edmac_get_current_addr(edmac_copy_write_chan);
     uint32_t expected_src_end_addr = (uint32_t) src + edmac_span_size(src_info);
     uint32_t expected_dst_end_addr = (uint32_t) dst + edmac_span_size(dst_info);
 
@@ -212,8 +210,8 @@ static void edmac_test_copy(
         }
     }
 
-    edmac_clear_cbr(edmac_read_chan);
-    edmac_clear_cbr(edmac_write_chan);
+    edmac_clear_cbr(edmac_copy_read_chan);
+    edmac_clear_cbr(edmac_copy_write_chan);
 }
 
 static void Log_md5(void * addr, int size)

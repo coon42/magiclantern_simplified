@@ -35,7 +35,15 @@ void edmac_copy_rectangle_finish();
 void edmac_memcpy_res_lock();
 void edmac_memcpy_res_unlock();
 
+/* Channels and connection used by the copy functions above, for code that
+ * needs to talk to the same hardware (spying, tests, other image engine
+ * users).  0xFFFFFFFF where copies don't go through a known channel pair. */
+extern uint32_t edmac_copy_read_chan;
+extern uint32_t edmac_copy_write_chan;
+extern uint32_t edmac_copy_connection;
+
 /* pulls the raw data from EDMAC without Canon's lv_save_raw (for raw backend) */
 void edmac_raw_slurp(void* dst, int w, int h);
+extern uint32_t edmac_raw_slurp_chan; /* 0xFFFFFFFF without CONFIG_EDMAC_RAW_SLURP */
 
 #endif // _edmac_memcpy_h_

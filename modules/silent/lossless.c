@@ -3,6 +3,7 @@
 #include "lens.h"
 #include "raw.h"
 #include "edmac.h"
+#include "edmac-memcpy.h"
 
 struct TwoInTwoOutLosslessPath_args
 { 
@@ -73,10 +74,6 @@ static void (*TTL_SetFlags)(int PictureType) = NULL;
 static void (*TTL_Start)(void * TTL_Args) = NULL;
 static void (*TTL_Stop)(void * TTL_Args) = NULL;
 static void (*TTL_Finish)(void * ResLock, void * TTL_Args, uint32_t * output_size) = NULL;
-
-/* edmac-memcpy.c */
-extern uint32_t edmac_write_chan;
-extern uint32_t edmac_read_chan;
 
 static void decompress_init();
 int lossless_init()
@@ -189,8 +186,8 @@ int lossless_init()
     if (is_camera("700D", "*") || is_camera("650D", "*") || is_camera("EOSM", "*") || is_camera("100D", "*"))
     {
         uint32_t resources[] = {
-            edmac_channel_res_id(edmac_write_chan),
-            edmac_channel_res_id(edmac_read_chan),
+            edmac_channel_res_id(edmac_copy_write_chan),
+            edmac_channel_res_id(edmac_copy_read_chan),
             0x20005,
             0x20016,
             0x30002,
@@ -212,8 +209,8 @@ int lossless_init()
     else if (is_camera("5D3", "*") || is_camera("6D", "*"))
     {
         uint32_t resources[] = {
-            edmac_channel_res_id(edmac_write_chan),
-            edmac_channel_res_id(edmac_read_chan),
+            edmac_channel_res_id(edmac_copy_write_chan),
+            edmac_channel_res_id(edmac_copy_read_chan),
             0x30001,    /* Read connection 1 (uncompressed input) */
             0x2002d,    /* Write connection 45 (compressed output) */
           //0x20016,    /* Write connection 22 (for WR2 - not used) */
@@ -234,8 +231,8 @@ int lossless_init()
     else if (is_camera("70D", "*"))
     {
         uint32_t resources[] = {
-            edmac_channel_res_id(edmac_write_chan),
-            edmac_channel_res_id(edmac_read_chan),
+            edmac_channel_res_id(edmac_copy_write_chan),
+            edmac_channel_res_id(edmac_copy_read_chan),
             0x30001,    /* Read connection 1 (uncompressed input) */
             0x2002d,    /* Write connection 45 (compressed output) */
           //0x20016,    /* Write connection 22 (for WR2 - not used) */
@@ -288,8 +285,8 @@ int lossless_compress_raw_rectangle(
 
     /* Default EDMAC channels may be used in LiveView;
      * use the ones from edmac_memcpy instead */
-    TTL_Args.RD1_Channel = edmac_read_chan;
-    TTL_Args.WR1_Channel = edmac_write_chan;
+    TTL_Args.RD1_Channel = edmac_copy_read_chan;
+    TTL_Args.WR1_Channel = edmac_copy_write_chan;
 
     /* set starting point (top-left corner) */
     /* we need to skip a multiple of 8 pixels horizontally for raw_pixblock alignment

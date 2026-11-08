@@ -369,9 +369,3 @@ void* edmac_copy_rectangle_cbr_start(void *dst, void *src,
     give_semaphore(edmac_copy_sem);
     return dst;
 }
-
-// SJE FIXME these are only here because mlv_lite module has them as deps,
-// even though the code doesn't use them.
-// Needs a cleaner solution.
-uint32_t edmac_read_chan = 0x6; // dummy, don't use
-uint32_t edmac_write_chan = 0x6; // dummy, don't use

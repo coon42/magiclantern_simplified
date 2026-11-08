@@ -8,6 +8,7 @@
 #include <shoot.h>
 #include <beep.h>
 #include <edmac.h>
+#include <edmac-memcpy.h>
 #include <timer.h>
 #include <asm.h>
 
@@ -798,6 +799,14 @@ static struct menu_entry edmac_menu[] =
 
 static unsigned int edmac_init()
 {
+    /* The register helpers in edmac.c only know the DIGIC 4/5 layout,
+     * and edmac_test.c drives the edmac-memcpy channels directly.
+     * Cams without CONFIG_EDMAC_MEMCPY have no such channels. */
+    if (edmac_copy_read_chan == 0xFFFFFFFF)
+    {
+        return 1;
+    }
+
     is_5d3 = is_camera("5D3", "*");
     edmac_regs_init();
     menu_add("Debug", edmac_menu, COUNT(edmac_menu));

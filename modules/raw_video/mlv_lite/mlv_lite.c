@@ -2610,8 +2610,6 @@ static const int LOG_INTERVAL = 500;
 static uint32_t edmac_start_clock = 0;
 
 /* from edmac-memcpy.c */
-extern uint32_t edmac_read_chan;
-extern uint32_t raw_write_chan;
 
 static uint32_t edmac_read_base;
 static uint32_t edmac_wraw_base;
@@ -2665,10 +2663,10 @@ static void FAST edmac_spy_poll(int last_expiry, void* unused)
 static void edmac_start_spy()
 {
     /* double-check whether we can use single-buffering */
-    /* read from raw buffer is done on edmac_read_chan (edmac-memcpy) or 8 (5D3 lossless) */
-    /* write to raw buffer is always done on raw_write_chan (EDMAC_RAW_SLURP) */
-    edmac_read_base = edmac_reg_base(OUTPUT_COMPRESSION ? 8 : edmac_read_chan);
-    edmac_wraw_base = edmac_reg_base(raw_write_chan);
+    /* read from raw buffer is done on edmac_copy_read_chan (edmac-memcpy) or 8 (5D3 lossless) */
+    /* write to raw buffer is always done on edmac_raw_slurp_chan (EDMAC_RAW_SLURP) */
+    edmac_read_base = edmac_reg_base(OUTPUT_COMPRESSION ? 8 : edmac_copy_read_chan);
+    edmac_wraw_base = edmac_reg_base(edmac_raw_slurp_chan);
     int fps = fps_get_current_x1000();
     if (fps == 0)
         return;

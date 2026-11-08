@@ -428,13 +428,11 @@ static uint32_t upconvert_bpp(frame_buf_t *frame, void* buf_out)
     
     if (!resLock)
     {
-        int edmac_read_ch_index = edmac_channel_to_index(edmac_read_chan);
-        int edmac_write_ch_index = edmac_channel_to_index(edmac_write_chan);
         uint32_t resIds[] = {
-            0x00000000 | edmac_write_ch_index,      /* write edmac channel */
-            0x00010000 | edmac_read_ch_index,       /* read edmac channel */
-            0x00020000 | edmac_write_connection,    /* write connection */
-            0x00030000 | edmac_read_connection,     /* read connection */
+            edmac_channel_res_id(edmac_write_chan),
+            edmac_channel_res_id(edmac_read_chan),
+            EDMAC_WRITE_CONN_RES_ID(edmac_write_connection),
+            EDMAC_READ_CONN_RES_ID(edmac_read_connection),
             0x00050002,                             /* DSUNPACK? */
             0x00050005,                             /* DEFC? */
             0x0005001d,                             /* PACK16/WDMAC16 */

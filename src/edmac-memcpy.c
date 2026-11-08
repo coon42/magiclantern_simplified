@@ -72,18 +72,15 @@ static void edmac_memcpy_init()
     edmac_memcpy_sem = create_named_semaphore("edmac_memcpy_sem", SEM_CREATE_UNLOCKED);
     edmac_read_done_sem = create_named_semaphore("edmac_read_done_sem", SEM_CREATE_LOCKED);
     
-    /* lookup the edmac channel indices for reslock */
-    int read_edmac_index = edmac_channel_to_index(edmac_read_chan);
-    int write_edmac_index = edmac_channel_to_index(edmac_write_chan);
-    ASSERT(read_edmac_index >= 0 && write_edmac_index >= 0);
-
     uint32_t resIds[] = {
-        0x00000000 + write_edmac_index, /* write edmac channel */
-        0x00010000 + read_edmac_index, /* read edmac channel */
-        0x00020000 + dmaConnection, /* write connection */
-        0x00030000 + dmaConnection, /* read connection */
+        edmac_channel_res_id(edmac_write_chan),
+        edmac_channel_res_id(edmac_read_chan),
+        EDMAC_WRITE_CONN_RES_ID(dmaConnection),
+        EDMAC_READ_CONN_RES_ID(dmaConnection),
     };
-    resLock = CreateResLockEntry(resIds, 4);
+    ASSERT(resIds[0] != 0xFFFFFFFF && resIds[1] != 0xFFFFFFFF);
+
+    resLock = CreateResLockEntry(resIds, COUNT(resIds));
     
     ASSERT(resLock);
 

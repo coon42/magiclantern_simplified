@@ -468,21 +468,18 @@ static void find_free_edmac_channels()
         wait_lv_frames(5);
 
         int dir = edmac_get_dir(ch);
-        int i = edmac_channel_to_index(ch);
-        uint32_t resource = 0;
+        uint32_t resource = edmac_channel_res_id(ch);
         
         switch (dir)
         {
             case EDMAC_DIR_WRITE:
             {
                 printf("Trying write channel #%d... ", ch);
-                resource = 0x00000000 + i; /* write edmac channel */
                 break;
             }
             case EDMAC_DIR_READ:
             {
                 printf("Trying read channel #%d... ", ch);
-                resource = 0x00010000 + i; /* read edmac channel */
                 break;
             }
             default:

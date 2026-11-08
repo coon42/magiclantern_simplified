@@ -189,8 +189,8 @@ int lossless_init()
     if (is_camera("700D", "*") || is_camera("650D", "*") || is_camera("EOSM", "*") || is_camera("100D", "*"))
     {
         uint32_t resources[] = {
-            0x00000 | edmac_channel_to_index(edmac_write_chan),
-            0x10000 | edmac_channel_to_index(edmac_read_chan),
+            edmac_channel_res_id(edmac_write_chan),
+            edmac_channel_res_id(edmac_read_chan),
             0x20005,
             0x20016,
             0x30002,
@@ -212,8 +212,8 @@ int lossless_init()
     else if (is_camera("5D3", "*") || is_camera("6D", "*"))
     {
         uint32_t resources[] = {
-            0x00000 | edmac_channel_to_index(edmac_write_chan),
-            0x10000 | edmac_channel_to_index(edmac_read_chan),
+            edmac_channel_res_id(edmac_write_chan),
+            edmac_channel_res_id(edmac_read_chan),
             0x30001,    /* Read connection 1 (uncompressed input) */
             0x2002d,    /* Write connection 45 (compressed output) */
           //0x20016,    /* Write connection 22 (for WR2 - not used) */
@@ -234,8 +234,8 @@ int lossless_init()
     else if (is_camera("70D", "*"))
     {
         uint32_t resources[] = {
-            0x00000 | edmac_channel_to_index(edmac_write_chan),
-            0x10000 | edmac_channel_to_index(edmac_read_chan),
+            edmac_channel_res_id(edmac_write_chan),
+            edmac_channel_res_id(edmac_read_chan),
             0x30001,    /* Read connection 1 (uncompressed input) */
             0x2002d,    /* Write connection 45 (compressed output) */
           //0x20016,    /* Write connection 22 (for WR2 - not used) */

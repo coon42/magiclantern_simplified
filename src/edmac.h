@@ -119,7 +119,10 @@ void AbortEDmac(unsigned int channel);
 void ConnectWriteEDmac(unsigned int channel, unsigned int where);
 void ConnectReadEDmac(unsigned int channel, unsigned int where);
 
-uint32_t edmac_channel_to_index(uint32_t channel);
+/* Resource IDs for CreateResLockEntry(); 0xFFFFFFFF if the channel is unused. */
+uint32_t edmac_channel_res_id(uint32_t channel);
+#define EDMAC_WRITE_CONN_RES_ID(conn) (0x00020000 | (conn))
+#define EDMAC_READ_CONN_RES_ID(conn)  (0x00030000 | (conn))
 
 uint32_t edmac_get_flags(uint32_t channel);
 uint32_t edmac_get_state(uint32_t channel);     /* 0=idle, 1=running (from hardware) */
@@ -143,6 +146,10 @@ char * edmac_format_size(struct edmac_info * info);
 static char * (*edmac_format_size)(struct edmac_info * info) = MODULE_FUNCTION(edmac_format_size);
 #endif
 
+/* Engine resource locks: the firmware's way of reserving EDMAC channels,
+ * connections and image processing blocks.  A resource ID is
+ * (resource type << 16) | number; see edmac_channel_res_id() and
+ * EDMAC_*_CONN_RES_ID() for the EDMAC ones. */
 struct LockEntry *CreateResLockEntry(uint32_t *resIds, uint32_t resIdCount);
 unsigned int LockEngineResources(struct LockEntry *lockEntry);
 unsigned int UnLockEngineResources(struct LockEntry *lockEntry);

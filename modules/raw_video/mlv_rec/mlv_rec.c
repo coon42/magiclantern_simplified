@@ -3350,7 +3350,7 @@ static void raw_video_rec_task()
     do
     {
         /* get exclusive access to our edmac channels */
-        edmac_memcpy_res_lock();
+        edmac_copy_lock_resources();
         clrscr();
 
         write_job_t *write_job = NULL;
@@ -3448,7 +3448,7 @@ static void raw_video_rec_task()
             if(ml_shutdown_requested || !mlv_rec_threads)
             {
                 /* exclusive edmac access no longer needed */
-                edmac_memcpy_res_unlock();
+                edmac_copy_unlock_resources();
                 set_recording_custom(CUSTOM_RECORDING_NOT_RECORDING);
                 goto cleanup;
             }
@@ -3679,7 +3679,7 @@ static void raw_video_rec_task()
             if(ml_shutdown_requested || !mlv_rec_threads)
             {
                 /* exclusive edmac access no longer needed */
-                edmac_memcpy_res_unlock();
+                edmac_copy_unlock_resources();
                 set_recording_custom(CUSTOM_RECORDING_NOT_RECORDING);
                 goto cleanup;
             }
@@ -3725,7 +3725,7 @@ static void raw_video_rec_task()
 
 
         /* exclusive edmac access no longer needed */
-        edmac_memcpy_res_unlock();
+        edmac_copy_unlock_resources();
 
         /* make sure all queues are empty */
         flush_queue(mlv_writer_queues[0]);

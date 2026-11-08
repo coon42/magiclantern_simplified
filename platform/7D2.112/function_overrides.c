@@ -197,11 +197,11 @@ void *dma_memcpy(void *dest, void *srce, size_t n)
 // There's a command message system, we can probably use that,
 // but for now we can get things working with dma_memcpy,
 // and just not allow cropped regions (needs edmac for perf).
-void edmac_memcpy_res_lock()
+void edmac_copy_lock_resources(void)
 {
 }
 
-void edmac_memcpy_res_unlock()
+void edmac_copy_unlock_resources(void)
 {
 }
 

@@ -218,11 +218,11 @@ unsigned int UnLockEngineResources(struct LockEntry *lockEntry)
 // This is much simpler than fixing edmac-memcpy.c to be
 // safe / working for 200D, given 200D has a convenience function
 // in DryOS for doing a rectangular copy.
-void edmac_memcpy_res_lock()
+void edmac_copy_lock_resources(void)
 {
 }
 
-void edmac_memcpy_res_unlock()
+void edmac_copy_unlock_resources(void)
 {
 }
 

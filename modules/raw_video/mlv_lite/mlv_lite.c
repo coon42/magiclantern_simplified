@@ -2718,7 +2718,7 @@ static void compress_task()
             if (OUTPUT_COMPRESSION == 0)
             {
                 /* get exclusive access to our edmac channels */
-                edmac_memcpy_res_lock();
+                edmac_copy_lock_resources();
                 printf("EDMAC copy resources locked.\n");
             }
 
@@ -2734,7 +2734,7 @@ static void compress_task()
             if (OUTPUT_COMPRESSION == 0)
             {
                 /* exclusive edmac access no longer needed */
-                edmac_memcpy_res_unlock();
+                edmac_copy_unlock_resources();
                 printf("EDMAC copy resources unlocked.\n");
             }
 

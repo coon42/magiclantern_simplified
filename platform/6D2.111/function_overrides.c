@@ -172,11 +172,11 @@ void set_default_mem_to_mem_cbr(void);
 // This all needs cleaning up after 2025 release,
 // want to do a D6 cam too so we can be more confident
 // about the shape of an appropriate fix.
-void edmac_memcpy_res_lock()
+void edmac_copy_lock_resources(void)
 {
 }
 
-void edmac_memcpy_res_unlock()
+void edmac_copy_unlock_resources(void)
 {
 }
 

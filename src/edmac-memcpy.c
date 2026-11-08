@@ -101,7 +101,7 @@ static void edmac_write_complete_cbr(void * ctx)
     give_semaphore(edmac_copy_done_sem);
 }
 
-void edmac_memcpy_res_lock()
+void edmac_copy_lock_resources(void)
 {
     //~ bmp_printf(FONT_MED, 50, 50, "Locking");
     int r = LockEngineResources(resLock);
@@ -113,7 +113,7 @@ void edmac_memcpy_res_lock()
     //~ bmp_printf(FONT_MED, 50, 50, "Locked!");
 }
 
-void edmac_memcpy_res_unlock()
+void edmac_copy_unlock_resources(void)
 {
     UnLockEngineResources(resLock);
 }

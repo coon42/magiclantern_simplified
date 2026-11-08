@@ -2247,7 +2247,7 @@ static void edmac_test_task()
     int xOff = 2;
     int yPos = 0;
 
-    edmac_memcpy_res_lock();
+    edmac_copy_lock_resources();
     edmac_copy_rectangle_adv(BMP_VRAM_START(idle), BMP_VRAM_START(real), 960, 120, 50, 960, 120, 50, 720, 440);
     while(true)
     {
@@ -2259,7 +2259,7 @@ static void edmac_test_task()
             xOff *= -1;
         }
     }
-    edmac_memcpy_res_unlock();
+    edmac_copy_unlock_resources();
 }
 
 static void __attribute__((optimize("-fno-delete-null-pointer-checks")))

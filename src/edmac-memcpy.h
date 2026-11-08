@@ -27,9 +27,11 @@ void edmac_copy_rectangle_adv_cleanup();
 void edmac_memcpy_finish();
 void edmac_copy_rectangle_finish();
 
-/* Lock/unlock engine resources used by edmac_memcpy (only if ported for your camera) */
-void edmac_memcpy_res_lock();
-void edmac_memcpy_res_unlock();
+/* Reserve the copy channels against other users in the firmware, around
+ * a series of copies (e.g. while recording raw video).  No-op on ports
+ * that don't need it. */
+void edmac_copy_lock_resources(void);
+void edmac_copy_unlock_resources(void);
 
 /* Channels and connection used by the copy functions above, for code that
  * needs to talk to the same hardware (spying, tests, other image engine

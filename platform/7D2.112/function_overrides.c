@@ -28,6 +28,7 @@
 #include <consts.h>
 #include <lens.h>
 #include <edmac.h>
+#include <edmac-memcpy.h>
 
 // fake WINSYS_BMP_DIRTY_BIT_NEG
 int winsys_bmp_dirty_bit_neg = 0;
@@ -190,7 +191,7 @@ void *dma_memcpy(void *dest, void *srce, size_t n)
 }
 
 // SJE FIXME large hackish crap:
-// Fake funcs for the edmac funcs required by mlv_lite.c
+// The edmac-memcpy.h copy functions, as used by mlv_lite.c.
 // This is much simpler than fixing edmac-memcpy.c to be
 // safe / working for 7D2, given that 7D2 seems to do all EDMAC
 // stuff from Omar, a separate core with no direct RPC found so far.
@@ -205,20 +206,21 @@ void edmac_copy_unlock_resources(void)
 {
 }
 
-void* edmac_copy_rectangle_cbr_start(void *dst, void *src,
-                                     int src_width, int src_x, int src_y,
-                                     int dst_width, int dst_x, int dst_y,
-                                     int w, int h,
-                                     void (*cbr_r)(void *), void (*cbr_w)(void *), void *cbr_ctx)
+// Blocks until the copy is done, then calls done() from this task.
+void *edmac_copy_rect_async(void *dst, void *src,
+                            int src_pitch, int src_x, int src_y,
+                            int dst_pitch, int dst_x, int dst_y,
+                            int w, int h,
+                            edmac_copy_done_cbr done, void *ctx)
 {
-    // "src_width" is width of the frame including dark areas, borders etc.
+    // "src_pitch" is width of the frame including dark areas, borders etc.
     // "w" is the width of the region to copy out, e.g. if stripping the borders.
 
     if ((src == NULL) || (dst == NULL))
     {
         ASSERT(0);
-        // This returns without clearing edmac_active via cbr_w(),
-        // so recording will stall.  Which is fine because it's noticeable
+        // This returns without calling done(), so e.g. mlv_lite's
+        // recording will stall.  Which is fine because it's noticeable
         // and you should never pass null ptrs in.
         return NULL;
     }
@@ -234,21 +236,19 @@ void* edmac_copy_rectangle_cbr_start(void *dst, void *src,
     // (and maybe we can trigger it from ICU), but so far we don't know how.
 
     // These imply mlv_lite should have raw_info.pitch == (res_x * BPP/8)
-    if (src_width != dst_width || dst_width != w)
+    if (src_pitch != dst_pitch || dst_pitch != w)
         return NULL;
 
     // These imply mlv_lite should have skip_x == 0
     if (src_x != 0 || dst_x != 0)
         return NULL;
 
-    dma_memcpy(dst + (dst_y * dst_width),
-               src + (src_y * src_width),
+    dma_memcpy(dst + (dst_y * dst_pitch),
+               src + (src_y * src_pitch),
                w * h);
 
-    cbr_w(NULL); // clears edmac_active in mlv_lite
+    if (done)
+        done(ctx);
     return dst;
 }
 
-void edmac_copy_rectangle_adv_cleanup()
-{
-}

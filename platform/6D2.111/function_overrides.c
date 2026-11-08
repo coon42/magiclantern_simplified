@@ -12,6 +12,7 @@
 #include <lens.h>
 #include <tasks.h>
 #include <edmac.h>
+#include <edmac-memcpy.h>
 
 struct chs_entry
 {
@@ -147,6 +148,12 @@ void _engio_write(uint32_t* reg_list)
     return;
 }
 
+// EDMAC copies for edmac-memcpy.h, via Canon's mem_to_mem helpers.
+//
+// This all needs cleaning up after 2025 release,
+// want to do a D6 cam too so we can be more confident
+// about the shape of an appropriate fix.
+
 // Canon mem_to_mem helpers, D7.  D7 uses a global for locking
 // the (I assume) mem2mem subsystem.
 // D8X do it a different way: a function that creates a ResLock, locks it
@@ -164,14 +171,6 @@ void mem_to_mem_setup_copy(struct edmac_info *src, struct edmac_info *dst);
 void mem_to_mem_set_src_dst_and_start(void *src, void *dst);
 void set_default_mem_to_mem_cbr(void);
 
-// SJE FIXME large hackish crap, based on 200D:
-// Fake funcs for the edmac funcs required by mlv_lite.c
-// This is much simpler than fixing edmac-memcpy.c to be
-// safe / working for D78.
-//
-// This all needs cleaning up after 2025 release,
-// want to do a D6 cam too so we can be more confident
-// about the shape of an appropriate fix.
 void edmac_copy_lock_resources(void)
 {
 }
@@ -180,35 +179,27 @@ void edmac_copy_unlock_resources(void)
 {
 }
 
-// Mild hack: this avoids defining CONFIG_EDMAC_MEMCPY in order
-// to get edmac_memcpy_sem global.  mlv_lite.c doesn't give a shit
-// about CONFIG_EDMAC_MEMCPY, just goes ahead anyway.
 static struct semaphore *edmac_copy_sem = NULL;
 static struct semaphore *mem2mem_sem = NULL;
 
-// This is not obvious at all, but mlv_lite module calls this
-// func when DMA write finishes.  We can't do the required cleanup
-// in this function, because it fires in an interrupt context,
-// and some of the things we need to do assert if called within an interrupt.
-// So all we do is release a sem, and edmac_copy_rectangle_cbr_start()
-// does the cleanup.
-//
-// edmac-memcpy.c looks like a prime target for simplification.
-// Over-engineered and under-utilised.  Maybe we can make everything blocking,
-// you have to serialise usage of EDMAC anyway.
-void edmac_copy_rectangle_adv_cleanup()
+// Fires in interrupt context when the mem_to_mem copy is done.
+// We can't do the required cleanup here, because some of the things
+// we need to do assert if called within an interrupt.
+// So all we do is release a sem, and edmac_copy_rect_async()
+// does the cleanup, then calls the caller's done cbr.
+static void mem2mem_done_cbr(void *ctx)
 {
-    //DryosDebugMsg(0, 15, "adv_cl giving mem2mem_sem");
     give_semaphore(mem2mem_sem);
 }
 
-void* edmac_copy_rectangle_cbr_start(void *dst, void *src,
-                                     int src_width, int src_x, int src_y,
-                                     int dst_width, int dst_x, int dst_y,
-                                     int w, int h,
-                                     void (*cbr_r)(void *), void (*cbr_w)(void *), void *cbr_ctx)
+// Blocks until the copy is done, then calls done() from this task.
+void *edmac_copy_rect_async(void *dst, void *src,
+                            int src_pitch, int src_x, int src_y,
+                            int dst_pitch, int dst_x, int dst_y,
+                            int w, int h,
+                            edmac_copy_done_cbr done, void *ctx)
 {
-    // "src_width" is width of the frame including dark areas, borders etc.
+    // "src_pitch" is width of the frame including dark areas, borders etc.
     // "w" is the width of the region to copy out, e.g. if stripping the borders.
 
     if ((src == NULL) || (dst == NULL))
@@ -234,25 +225,21 @@ void* edmac_copy_rectangle_cbr_start(void *dst, void *src,
 // But the effect is to remove the uncache bit that we did
 // an assert check for just above!
 //
-//    void *src_adjusted = (void *)(((uint32_t)src & 0x1FFFFFFF) + src_x + src_y * src_width);
-//    void *dst_adjusted = (void *)(((uint32_t)dst & 0x1FFFFFFF) + dst_x + dst_y * dst_width);
-    void *src_adjusted = (void *)(((uint32_t)src) + src_x + src_y * src_width);
-    void *dst_adjusted = (void *)(((uint32_t)dst) + dst_x + dst_y * dst_width);
+//    void *src_adjusted = (void *)(((uint32_t)src & 0x1FFFFFFF) + src_x + src_y * src_pitch);
+//    void *dst_adjusted = (void *)(((uint32_t)dst & 0x1FFFFFFF) + dst_x + dst_y * dst_pitch);
+    void *src_adjusted = (void *)(((uint32_t)src) + src_x + src_y * src_pitch);
+    void *dst_adjusted = (void *)(((uint32_t)dst) + dst_x + dst_y * dst_pitch);
 
-    // TODO if / when we unify EDMAC memcpy API across cam gens, this will need work.
-    // edmac-memcpy.c expects to use edmac_memcpy_sem global.
-    // For now, only mlv_lite does m2m_cpy stuff on D7, so we can get away with this less-global
-    // var.
     if (mem2mem_sem == NULL)
         mem2mem_sem = create_named_semaphore("mem2mem", SEM_CREATE_LOCKED);
     if (edmac_copy_sem == NULL)
         edmac_copy_sem = create_named_semaphore("edmac_copy", SEM_CREATE_UNLOCKED);
     if (take_semaphore(edmac_copy_sem, 1000))
     {
-        DryosDebugMsg(0, 15, "cbr_start failed to take edmac_copy_sem");
+        DryosDebugMsg(0, 15, "edmac_copy_rect_async failed to take edmac_copy_sem");
         return NULL;
     }
-//    DryosDebugMsg(0, 15, "cbr_start took edmac_copy_sem");
+//    DryosDebugMsg(0, 15, "edmac_copy_rect_async took edmac_copy_sem");
 
     // Not sure this is essential, but these are the devices locked
     // by code in 6D2 rom.
@@ -306,7 +293,7 @@ void* edmac_copy_rectangle_cbr_start(void *dst, void *src,
 
     // D7 does this before lock_and_wake_mem_to_mem(), even
     // though that seems risky to me
-    set_mem_to_mem_cbr(cbr_w, cbr_ctx);
+    set_mem_to_mem_cbr(mem2mem_done_cbr, NULL);
 
     // Seems to me you want to lock before changing the cbr,
     // or setting the channels for the copy,
@@ -328,7 +315,7 @@ void* edmac_copy_rectangle_cbr_start(void *dst, void *src,
     lock_and_wake_mem_to_mem(); // blocking
 
     struct edmac_info src_region = {
-        .off1b = src_width - w,
+        .off1b = src_pitch - w,
         .xb = w,
         .yb = h - 1,
     };
@@ -345,13 +332,11 @@ void* edmac_copy_rectangle_cbr_start(void *dst, void *src,
     // our cbr, releasing our sem
     mem_to_mem_set_src_dst_and_start(src_adjusted, dst_adjusted);
 
-    // sem should be freed by edmac_copy_rectangle_adv_cleanup()
-    // when copy completes (i.e. cbr_w() should call that function,
-    // as well as whatever else it wants to do).
+    // sem is given by mem2mem_done_cbr() when the copy completes
     if (take_semaphore(mem2mem_sem, 1000))
     {
         // EDMAC copy timeout?
-        DryosDebugMsg(0, 15, "cbr_start failed to take mem2mem_sem");
+        DryosDebugMsg(0, 15, "edmac_copy_rect_async failed to take mem2mem_sem");
         return NULL;
         // This will break all future EDMAC copy usage,
         // since we aren't releasing edmac_copy_sem
@@ -367,5 +352,9 @@ void* edmac_copy_rectangle_cbr_start(void *dst, void *src,
     delete_mem_to_mem_lock();
 
     give_semaphore(edmac_copy_sem);
+
+    if (done)
+        done(ctx);
+
     return dst;
 }

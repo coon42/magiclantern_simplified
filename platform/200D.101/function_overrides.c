@@ -12,6 +12,7 @@
 #include <lens.h>
 #include <tasks.h>
 #include <edmac.h>
+#include <edmac-memcpy.h>
 #include "fps-engio_per_cam.h"
 
 //#include "log.h"
@@ -214,7 +215,7 @@ unsigned int UnLockEngineResources(struct LockEntry *lockEntry)
 */
 
 // SJE FIXME large hackish crap:
-// Fake funcs for the edmac funcs required by mlv_lite.c
+// The edmac-memcpy.h copy functions, as used by mlv_lite.c.
 // This is much simpler than fixing edmac-memcpy.c to be
 // safe / working for 200D, given 200D has a convenience function
 // in DryOS for doing a rectangular copy.
@@ -226,13 +227,14 @@ void edmac_copy_unlock_resources(void)
 {
 }
 
-void* edmac_copy_rectangle_cbr_start(void *dst, void *src,
-                                     int src_width, int src_x, int src_y,
-                                     int dst_width, int dst_x, int dst_y,
-                                     int w, int h,
-                                     void (*cbr_r)(void *), void (*cbr_w)(void *), void *cbr_ctx)
+// Blocks until the copy is done, then calls done() from this task.
+void *edmac_copy_rect_async(void *dst, void *src,
+                            int src_pitch, int src_x, int src_y,
+                            int dst_pitch, int dst_x, int dst_y,
+                            int w, int h,
+                            edmac_copy_done_cbr done, void *ctx)
 {
-    // "src_width" is width of the frame including dark areas, borders etc.
+    // "src_pitch" is width of the frame including dark areas, borders etc.
     // "w" is the width of the region to copy out, e.g. if stripping the borders.
 
     if ((src == NULL) || (dst == NULL))
@@ -255,8 +257,8 @@ void* edmac_copy_rectangle_cbr_start(void *dst, void *src,
 
     /* create a memory suite from a already existing (continuous) memory block with given size. */
     // SJE: no idea what "memory suite" is supposed to mean here
-    uint32_t src_adjusted = ((uint32_t)src & 0x1FFFFFFF) + src_x + src_y * src_width;
-    uint32_t dst_adjusted = ((uint32_t)dst & 0x1FFFFFFF) + dst_x + dst_y * dst_width;
+    uint32_t src_adjusted = ((uint32_t)src & 0x1FFFFFFF) + src_x + src_y * src_pitch;
+    uint32_t dst_adjusted = ((uint32_t)dst & 0x1FFFFFFF) + dst_x + dst_y * dst_pitch;
 
     // these struct defs should probably move to edmac.h,
     // or maybe edmac-memcpy.h
@@ -280,7 +282,7 @@ void* edmac_copy_rectangle_cbr_start(void *dst, void *src,
     };
 
     struct edmac_info src_region = {
-        .off1b = src_width - w,
+        .off1b = src_pitch - w,
         .xb = w,
         .yb = h - 1,
     };
@@ -325,11 +327,9 @@ void* edmac_copy_rectangle_cbr_start(void *dst, void *src,
     extern void mem_to_mem_edmac_copy(struct m2m_copy_info *);
     // If channels, or resLock above is wrong, then the following hangs
     mem_to_mem_edmac_copy(&m2m_copy_info);
-    cbr_w(NULL); // clears edmac_active, we have no CBR to do this
+    if (done)
+        done(ctx);
 
     return dst;
 }
 
-void edmac_copy_rectangle_adv_cleanup()
-{
-}

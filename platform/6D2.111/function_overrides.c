@@ -147,6 +147,23 @@ void _engio_write(uint32_t* reg_list)
     return;
 }
 
+// Canon mem_to_mem helpers, D7.  D7 uses a global for locking
+// the (I assume) mem2mem subsystem.
+// D8X do it a different way: a function that creates a ResLock, locks it
+// with LockEngineResources, then returns it.
+// Maybe we could wrap the D7 way and pretend it's the same as D8, to unify
+// the interface?
+void create_mem_to_mem_lock_and_pwrmng_globals(uint32_t src_channel, uint32_t dst_channel,
+                                               void *resIDs, uint32_t resID_count);
+void lock_and_wake_mem_to_mem(void);
+void unlock_and_sleep_mem_to_mem(void);
+void cleanup_mem_to_mem(void);
+void delete_mem_to_mem_lock(void);
+void set_mem_to_mem_cbr(void *cbr, void *param); // when both dst and src channels are complete, this cbr fires
+void mem_to_mem_setup_copy(struct edmac_info *src, struct edmac_info *dst);
+void mem_to_mem_set_src_dst_and_start(void *src, void *dst);
+void set_default_mem_to_mem_cbr(void);
+
 // SJE FIXME large hackish crap, based on 200D:
 // Fake funcs for the edmac funcs required by mlv_lite.c
 // This is much simpler than fixing edmac-memcpy.c to be

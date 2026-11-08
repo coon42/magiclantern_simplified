@@ -22,7 +22,7 @@ static const char * edmac_format_size_short(struct edmac_info * info, uint32_t m
     if (strlen(sz) > maxlen)
     {
         /* description too complex? just print the total transfer size */
-        return format_memory_size(edmac_get_total_size(info, 0));
+        return format_memory_size(edmac_data_size(info));
     }
 
     return sz;
@@ -216,7 +216,7 @@ static void edmac_display_conn(int page)
                 uint32_t dir  = edmac_get_dir(ch);
                 uint64_t addr = (uint32_t)CACHEABLE(edmac_get_address(ch));
                 uint64_t ptr  = (uint32_t)CACHEABLE(edmac_get_pointer(ch));
-                uint64_t last = addr + edmac_get_total_size(&info, 1);
+                uint64_t last = addr + edmac_span_size(&info);
 
                 int ya = 50 + addr * 400 / 0x20000000;
                 int yp = 50 + ptr  * 400 / 0x20000000;

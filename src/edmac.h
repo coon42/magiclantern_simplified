@@ -135,7 +135,11 @@ uint32_t edmac_get_connection(uint32_t channel, uint32_t direction);
 uint32_t edmac_get_dir(uint32_t channel);
 
 struct edmac_info edmac_get_info(uint32_t channel);
-uint32_t edmac_get_total_size(struct edmac_info * info, int include_offsets);
+
+/* Bytes actually moved by a transfer with this geometry, and the size of
+ * the RAM region it covers (data plus the gaps from the offsets). */
+uint32_t edmac_data_size(struct edmac_info *info);
+uint32_t edmac_span_size(struct edmac_info *info);
 
 uint32_t edmac_bytes_per_transfer(uint32_t flags);
 

@@ -317,31 +317,34 @@ struct edmac_info edmac_get_info(uint32_t channel)
     return info;
 }
 
-// Great, a "total size" function that can return two different sizes.
-// FIXME: split this into two different top-level functions.
-uint32_t edmac_get_total_size(struct edmac_info *info, int include_offsets)
+/*
+ * Geometry as modelled below (checked with the edmac module's copy tests):
+ * a transfer is yn+1 lines, each made of xn "a" blocks followed by one "b"
+ * block.  A block is y+1 rows of x bytes (xa or xb wide, ya rows high, or
+ * yb in the last line), with off1a/off1b skipped between rows.  An "a"
+ * block is followed by off2a (off2b in the last line), a "b" block by off3.
+ */
+uint32_t edmac_data_size(struct edmac_info *info)
+{
+    int xa = info->xa; int xb = info->xb; int xn = info->xn;
+    int ya = info->ya; int yb = info->yb; int yn = info->yn;
+
+    return (xa * (ya+1) * xn + xb * (ya+1)) * yn +
+           (xa * (yb+1) * xn + xb * (yb+1));
+}
+
+uint32_t edmac_span_size(struct edmac_info *info)
 {
     int xa = info->xa; int xb = info->xb; int xn = info->xn;
     int ya = info->ya; int yb = info->yb; int yn = info->yn;
     int off1a = info->off1a; int off1b = info->off1b;
     int off2a = info->off2a; int off2b = info->off2b;
     int off3  = info->off3;
-    
-    /* actual amount of data transferred */
-    uint32_t transfer_data_size =
-        (xa * (ya+1) * xn + xb * (ya+1)) * yn +
-        (xa * (yb+1) * xn + xb * (yb+1));
-    
-    /* total size covered, including offsets */
-    uint32_t transfer_data_skip_size =
-        (((xa + off1a) * ya + xa + off2a) * xn +
-         ((xb + off1b) * ya + xb + off3)) * yn +
-        (((xa + off1a) * yb + xa + off2b) * xn +
-          (xb + off1b) * yb + xb + off3);
-    
-    return (include_offsets)
-        ? transfer_data_skip_size
-        : transfer_data_size;
+
+    return (((xa + off1a) * ya + xa + off2a) * xn +
+            ((xb + off1b) * ya + xb + off3)) * yn +
+           (((xa + off1a) * yb + xa + off2b) * xn +
+             (xb + off1b) * yb + xb + off3);
 }
 
 #ifdef CONFIG_DIGIC_V

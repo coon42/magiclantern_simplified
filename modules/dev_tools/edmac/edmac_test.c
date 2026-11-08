@@ -102,8 +102,8 @@ static void edmac_test_copy(
     
     msleep(100);
     
-    uint32_t src_end_addr = edmac_get_pointer(edmac_read_chan);
-    uint32_t dst_end_addr = edmac_get_pointer(edmac_write_chan);
+    uint32_t src_end_addr = edmac_get_current_addr(edmac_read_chan);
+    uint32_t dst_end_addr = edmac_get_current_addr(edmac_write_chan);
     uint32_t expected_src_end_addr = (uint32_t) src + edmac_span_size(src_info);
     uint32_t expected_dst_end_addr = (uint32_t) dst + edmac_span_size(dst_info);
 

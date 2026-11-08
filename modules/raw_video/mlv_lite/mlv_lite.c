@@ -2136,10 +2136,10 @@ void FAST hack_liveview_vsync()
         for (int channel = 0; channel < 32; channel++)
         {
             /* silence out the EDMACs used for HD and LV buffers */
-            int pitch = edmac_get_length(channel) & 0xFFFF;
+            int pitch = edmac_get_info(channel).xb;
             if (pitch == vram_lv.pitch || pitch == vram_hd.pitch)
             {
-                uint32_t reg = edmac_get_base(channel);
+                uint32_t reg = edmac_reg_base(channel);
                 //printf("Hack %d %x %dx%d\n", channel, reg, shamem_read(reg + 0x10) & 0xFFFF, shamem_read(reg + 0x10) >> 16);
                 *(volatile uint32_t *)(reg + 0x10) = shamem_read(reg + 0x10) & 0xFFFF;
             }
@@ -2667,8 +2667,8 @@ static void edmac_start_spy()
     /* double-check whether we can use single-buffering */
     /* read from raw buffer is done on edmac_read_chan (edmac-memcpy) or 8 (5D3 lossless) */
     /* write to raw buffer is always done on raw_write_chan (EDMAC_RAW_SLURP) */
-    edmac_read_base = edmac_get_base(OUTPUT_COMPRESSION ? 8 : edmac_read_chan);
-    edmac_wraw_base = edmac_get_base(raw_write_chan);
+    edmac_read_base = edmac_reg_base(OUTPUT_COMPRESSION ? 8 : edmac_read_chan);
+    edmac_wraw_base = edmac_reg_base(raw_write_chan);
     int fps = fps_get_current_x1000();
     if (fps == 0)
         return;

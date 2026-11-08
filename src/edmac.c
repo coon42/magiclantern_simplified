@@ -111,7 +111,7 @@ uint32_t edmac_get_dir(uint32_t channel)
     return EDMAC_DIR_UNUSED;
 }
 
-uint32_t edmac_get_base(uint32_t channel)
+uint32_t edmac_reg_base(uint32_t channel)
 {
     if (channel >= NUM_EDMAC_CHANNELS)
     {
@@ -136,7 +136,7 @@ static uint32_t edmac_get_block(uint32_t mmio_addr)
     }
 }
 
-uint32_t edmac_get_channel(uint32_t mmio_addr)
+uint32_t edmac_channel_from_reg(uint32_t mmio_addr)
 {
     uint32_t block = edmac_get_block(mmio_addr);
     if (block == 0xFFFFFFFF)
@@ -146,7 +146,7 @@ uint32_t edmac_get_channel(uint32_t mmio_addr)
 
     uint32_t ch = ((mmio_addr >> 8) & 0xF) + block * 16;
     //ASSERT(edmac_get_dir(ch) != EDMAC_DIR_UNUSED);
-    //ASSERT(edmac_get_base(ch) == reg);
+    //ASSERT(edmac_reg_base(ch) == reg);
     return ch;
 }
 
@@ -158,7 +158,7 @@ uint32_t edmac_get_state(uint32_t channel)
     }
     
     /* this one is retrieved by EngDrvIn (reading directly from the register, not the cached value) */
-    return MEM(edmac_get_base(channel) + 0x00);
+    return MEM(edmac_reg_base(channel) + 0x00);
 }
 
 uint32_t edmac_get_flags(uint32_t channel)
@@ -168,37 +168,27 @@ uint32_t edmac_get_flags(uint32_t channel)
         return -1;
     }
 
-    return shamem_read(edmac_get_base(channel) + 0x04);
+    return shamem_read(edmac_reg_base(channel) + 0x04);
 }
 
-uint32_t edmac_get_address(uint32_t channel)
+uint32_t edmac_get_start_addr(uint32_t channel)
 {
     if (channel >= NUM_EDMAC_CHANNELS)
     {
         return -1;
     }
 
-    return shamem_read(edmac_get_base(channel) + 0x08);
+    return shamem_read(edmac_reg_base(channel) + 0x08);
 }
 
-uint32_t edmac_get_pointer(uint32_t channel)
+uint32_t edmac_get_current_addr(uint32_t channel)
 {
     if (channel >= NUM_EDMAC_CHANNELS)
     {
         return -1;
     }
 
-    return MEM(edmac_get_base(channel) + 0x08);
-}
-
-uint32_t edmac_get_length(uint32_t channel)
-{
-    if (channel >= NUM_EDMAC_CHANNELS)
-    {
-        return -1;
-    }
-
-    return shamem_read(edmac_get_base(channel) + 0x10);
+    return MEM(edmac_reg_base(channel) + 0x08);
 }
 
 uint32_t edmac_get_connection(uint32_t channel, uint32_t direction)
@@ -300,7 +290,7 @@ static int fix_off2(int32_t off)
 
 struct edmac_info edmac_get_info(uint32_t channel)
 {
-    uint32_t base = edmac_get_base(channel);
+    uint32_t base = edmac_reg_base(channel);
     struct edmac_info info = {
         .xa    = shamem_read(base + 0x14) & 0xFFFF,
         .xb    = shamem_read(base + 0x10) & 0xFFFF,

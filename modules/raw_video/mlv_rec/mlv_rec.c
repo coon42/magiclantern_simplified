@@ -1731,10 +1731,10 @@ static void hack_liveview_vsync()
         for (int channel = 0; channel < 32; channel++)
         {
             /* silence out the EDMACs used for HD and LV buffers */
-            int pitch = edmac_get_length(channel) & 0xFFFF;
+            int pitch = edmac_get_info(channel).xb;
             if (pitch == vram_lv.pitch || pitch == vram_hd.pitch)
             {
-                uint32_t reg = edmac_get_base(channel);
+                uint32_t reg = edmac_reg_base(channel);
                 bmp_printf(FONT_SMALL, 30, y += font_small.height, "Hack %x %dx%d ", reg, shamem_read(reg + 0x10) & 0xFFFF, shamem_read(reg + 0x10) >> 16);
                 *(volatile uint32_t *)(reg + 0x10) = shamem_read(reg + 0x10) & 0xFFFF;
             }

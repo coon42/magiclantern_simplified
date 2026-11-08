@@ -166,7 +166,7 @@ static void stub_test_edmac()
         /* here, waiting for ~10ms may be too much, as EDMAC is very fast */
         uint32_t mid = (uint32_t)CACHEABLE(dst) + size / 2;
         uint64_t t0 = get_us_clock();
-        while (edmac_get_pointer(edmac_write_chan) < mid)
+        while (edmac_get_current_addr(edmac_write_chan) < mid)
             ;
         uint64_t t1 = get_us_clock();
 
@@ -178,13 +178,13 @@ static void stub_test_edmac()
         TEST_FUNC(dt);
 
         /* how much did it copy? */
-        int copied = edmac_get_pointer(edmac_write_chan) - (uint32_t)CACHEABLE(dst);
+        int copied = edmac_get_current_addr(edmac_write_chan) - (uint32_t)CACHEABLE(dst);
         TEST_FUNC_CHECK(copied, >= size/2);
         TEST_FUNC_CHECK(copied, < size*3/2);
 
         /* did it actually stop? */
         msleep(100);
-        int copied2 = edmac_get_pointer(edmac_write_chan) - (uint32_t)CACHEABLE(dst);
+        int copied2 = edmac_get_current_addr(edmac_write_chan) - (uint32_t)CACHEABLE(dst);
         TEST_FUNC_CHECK(copied, == copied2);
 
         /* did it copy as much as it reported? */

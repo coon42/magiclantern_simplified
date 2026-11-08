@@ -124,15 +124,17 @@ uint32_t edmac_channel_res_id(uint32_t channel);
 #define EDMAC_WRITE_CONN_RES_ID(conn) (0x00020000 | (conn))
 #define EDMAC_READ_CONN_RES_ID(conn)  (0x00030000 | (conn))
 
-uint32_t edmac_get_flags(uint32_t channel);
-uint32_t edmac_get_state(uint32_t channel);     /* 0=idle, 1=running (from hardware) */
-uint32_t edmac_get_base(uint32_t channel);      /* base register */
-uint32_t edmac_get_channel(uint32_t reg);       /* channel from register */
-uint32_t edmac_get_address(uint32_t channel);   /* start address */
-uint32_t edmac_get_pointer(uint32_t channel);   /* current address (from hardware) */
-uint32_t edmac_get_length(uint32_t channel);    /* yb,xb (hi,lo) */
+/* Channel number <-> register block address.  Both return 0xFFFFFFFF if
+ * there is no such channel / register block. */
+uint32_t edmac_reg_base(uint32_t channel);
+uint32_t edmac_channel_from_reg(uint32_t reg);
+
+uint32_t edmac_get_dir(uint32_t channel);          /* EDMAC_DIR_* */
+uint32_t edmac_get_state(uint32_t channel);        /* 0 = idle, 1 = running (live register) */
+uint32_t edmac_get_flags(uint32_t channel);        /* as passed to SetEDmac() */
+uint32_t edmac_get_start_addr(uint32_t channel);   /* buffer address as set up */
+uint32_t edmac_get_current_addr(uint32_t channel); /* transfer position (live register) */
 uint32_t edmac_get_connection(uint32_t channel, uint32_t direction);
-uint32_t edmac_get_dir(uint32_t channel);
 
 struct edmac_info edmac_get_info(uint32_t channel);
 

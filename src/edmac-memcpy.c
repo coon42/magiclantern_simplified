@@ -8,7 +8,7 @@
 #ifdef CONFIG_EDMAC_MEMCPY
 
 static struct semaphore *edmac_memcpy_sem = NULL; /* to allow only one memcpy running at a time */
-static struct semaphore *edmac_read_done_sem = NULL; /* to know when memcpy is finished */
+static struct semaphore *edmac_copy_done_sem = NULL; /* to know when memcpy is finished */
 
 /* pick some free (check using debug menu) EDMAC channels write: 0x00-0x06, 0x10-0x16, 0x20-0x21. read: 0x08-0x0D, 0x18-0x1D,0x28-0x2B */
 #if defined(CONFIG_5D2) || defined(CONFIG_50D)
@@ -70,7 +70,7 @@ static struct LockEntry * resLock = 0;
 static void edmac_memcpy_init()
 {
     edmac_memcpy_sem = create_named_semaphore("edmac_memcpy_sem", SEM_CREATE_UNLOCKED);
-    edmac_read_done_sem = create_named_semaphore("edmac_read_done_sem", SEM_CREATE_LOCKED);
+    edmac_copy_done_sem = create_named_semaphore("edmac_copy_done_sem", SEM_CREATE_LOCKED);
     
     uint32_t resIds[] = {
         edmac_channel_res_id(edmac_copy_write_chan),
@@ -92,11 +92,13 @@ INIT_FUNC("edmac_memcpy", edmac_memcpy_init);
 
 static void edmac_read_complete_cbr(void *ctx)
 {
-    give_semaphore(edmac_read_done_sem);
 }
 
+/* The copy is finished once the write channel has stored the last data;
+ * the read channel completes earlier, while data is still in flight. */
 static void edmac_write_complete_cbr(void * ctx)
 {
+    give_semaphore(edmac_copy_done_sem);
 }
 
 void edmac_memcpy_res_lock()
@@ -204,13 +206,13 @@ void edmac_copy_rectangle_adv_cleanup()
     give_semaphore(edmac_memcpy_sem);
 }
 
-/* this function waits for the DMA transfer being finished by blocked wait on the read semaphore.
+/* this function waits for the DMA transfer being finished by blocked wait on the copy done semaphore.
    as soon the semaphore was taken, cleanup edmac configuration and release global EDMAC semaphore.
  */
 void edmac_copy_rectangle_adv_finish()
 {
-    /* wait until read is finished */
-    int r = take_semaphore(edmac_read_done_sem, 1000);
+    /* wait until the write channel is finished */
+    int r = take_semaphore(edmac_copy_done_sem, 1000);
     if(r != 0)
     {
         NotifyBox(2000, "EDMAC timeout");
@@ -281,7 +283,7 @@ void* edmac_memcpy_start(void* dst, void* src, size_t length)
         void * ret = memcpy(dst, src, length);
         /* simulate a started copy operation */
         take_semaphore(edmac_memcpy_sem, 0);
-        give_semaphore(edmac_read_done_sem);
+        give_semaphore(edmac_copy_done_sem);
         return ret;
     }
     

@@ -60,10 +60,10 @@ uint32_t edmac_copy_connection = 6;
 
 /* see wiki, register map, EDMAC what the flags mean. they are for setting up copy block size */
 #if defined(CONFIG_7D)
-uint32_t edmac_memcpy_flags = EDMAC_2_BYTES_PER_TRANSFER; //Original are faster on 7D
-#else   
-uint32_t edmac_memcpy_flags = EDMAC_16_BYTES_PER_TRANSFER; //Enhanced
-#endif 
+static const uint32_t copy_flags = EDMAC_2_BYTES_PER_TRANSFER; //Original are faster on 7D
+#else
+static const uint32_t copy_flags = EDMAC_16_BYTES_PER_TRANSFER; //Enhanced
+#endif
 
 static struct LockEntry * resLock = 0;
 
@@ -137,7 +137,7 @@ void* edmac_copy_rectangle_cbr_start(void* dst, void* src,
      *
      * Do not remove this check, or risk permanent camera bricking.
      */
-    uint32_t bpt = edmac_bytes_per_transfer(edmac_memcpy_flags);
+    uint32_t bpt = edmac_bytes_per_transfer(copy_flags);
     if ((w * h) % bpt)
     {
         printf("Invalid EDMAC output size: %d x %d (mod%d = %d)\n", w, h, bpt, (w * h) % bpt);
@@ -184,8 +184,8 @@ void* edmac_copy_rectangle_cbr_start(void* dst, void* src,
         .off1b = dst_width - w,
     };
     
-    SetEDmac(edmac_copy_read_chan, (void*)src_adjusted, &src_edmac_info, edmac_memcpy_flags);
-    SetEDmac(edmac_copy_write_chan, (void*)dst_adjusted, &dst_edmac_info, edmac_memcpy_flags);
+    SetEDmac(edmac_copy_read_chan, (void*)src_adjusted, &src_edmac_info, copy_flags);
+    SetEDmac(edmac_copy_write_chan, (void*)dst_adjusted, &dst_edmac_info, copy_flags);
     
     /* start transfer. no flags for write, 2 for read channels */
     StartEDmac(edmac_copy_write_chan, 0);
@@ -244,78 +244,22 @@ void* edmac_copy_rectangle_adv(void* dst, void* src,
     return ans;
 }
 
-void* edmac_copy_rectangle(void* dst, void* src, int src_width, int x, int y, int w, int h)
-{
-    return edmac_copy_rectangle_adv(dst, src, src_width, x, y, w, 0, 0, w, h);
-}
-
-void* edmac_copy_rectangle_start(void* dst, void* src, int src_width, int x, int y, int w, int h)
-{
-    return edmac_copy_rectangle_adv_start(dst, src, src_width, x, y, w, 0, 0, w, h);
-}
-
 void edmac_copy_rectangle_finish()
 {
     edmac_copy_rectangle_adv_finish();
 }
 
-void* edmac_memset(void* dst, int value, size_t length)
+/* Largest width <= sqrt(length) that divides length, so that the copy is
+ * a roughly square w x h rectangle.  0 if EDMAC can't copy this length. */
+static uint32_t find_divider(size_t length)
 {
-    uint32_t blocksize = 64;
-    uint32_t leading = MIN(length, (blocksize - ((uint32_t)dst % blocksize)) % blocksize);
-    uint32_t trailing = (length - leading) % blocksize;
-    uint32_t copyable = length - leading - trailing;
-    
-    /* less makes no sense as it would most probably be slower */
-    if(copyable < 8 * blocksize)
-    {
-        return memset(dst, value, length);
-    }
-    
-    uint32_t copies = copyable / blocksize - 1;
-    
-    /* fill the first line to have a copy source */
-    memset(dst + leading, value, blocksize);
-    
-    /* now copy the first line over the next lines */
-    edmac_copy_rectangle_adv_start(dst + leading + blocksize, dst + leading,
-                                   0, 0, 0,
-                                   blocksize, 0, 0,
-                                   blocksize, copies);
-    
-    /* leading or trailing bytes that edmac cannot handle? */
-    if(leading)
-    {
-        memset(dst, value, leading);
-    }
-    if(trailing)
-    {
-        memset(dst + length - trailing, value, trailing);
-    }
-
-    edmac_copy_rectangle_adv_finish();
-    
-    return dst;
-}
-
-uint32_t edmac_find_divider(size_t length, size_t transfer_size)
-{
-    uint32_t max_width = (uint32_t) sqrtf(length);
-
-    /* find a fitting divider for length = width * height */
-    /* note: (width * height) % (bytes per transfer) must be 0 */
-    if (!transfer_size)
-    {
-        transfer_size = edmac_bytes_per_transfer(edmac_memcpy_flags);
-    }
-
-    if (length % transfer_size)
+    if (length % edmac_bytes_per_transfer(copy_flags))
     {
         /* this will crash */
         return 0;
     }
 
-    for (uint32_t width = max_width; width > 0; width--)
+    for (uint32_t width = (uint32_t) sqrtf(length); width > 0; width--)
     {
         if (length % width == 0)
         {
@@ -329,7 +273,7 @@ uint32_t edmac_find_divider(size_t length, size_t transfer_size)
 
 void* edmac_memcpy_start(void* dst, void* src, size_t length)
 {
-    int blocksize = edmac_find_divider(length, 0);
+    int blocksize = find_divider(length);
 
     if (!blocksize)
     {

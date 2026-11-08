@@ -4,6 +4,7 @@
 #include <edmac.h>
 #include <edmac-memcpy.h>
 #include "md5.h"
+#include <math.h>
 
 static FILE * logfile = 0;
 
@@ -22,6 +23,26 @@ static int Log(const char * fmt, ...)
 }
 
 /* uses the channels from edmac-memcpy.c */
+
+/* Largest width <= sqrt(length) that divides length; 0 if length isn't
+ * a multiple of transfer_size. */
+static uint32_t find_divider(size_t length, size_t transfer_size)
+{
+    if (length % transfer_size)
+    {
+        return 0;
+    }
+
+    for (uint32_t width = (uint32_t) sqrtf(length); width > 0; width--)
+    {
+        if (length % width == 0)
+        {
+            return width;
+        }
+    }
+
+    return 0;
+}
 
 static void edmac_read_complete_cbr (void* ctx)
 {
@@ -451,7 +472,7 @@ void edmac_test()
             memset(dst, 0xEE, dst_size);
 
             int dst_length = edmac_data_size(&dst_infos[k]);
-            int dst_width = edmac_find_divider(dst_length, 16);
+            int dst_width = find_divider(dst_length, 16);
             int dst_height = dst_length / dst_width;
             ASSERT(dst_length <= dst_size);
             ASSERT(dst_length == dst_width * dst_height);

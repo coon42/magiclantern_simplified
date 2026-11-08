@@ -122,8 +122,19 @@ static int stub_ok = 1;
 static int stub_passed_tests = 0;
 static int stub_failed_tests = 0;
 
+/* for waiting on edmac_copy_rect_async() */
+static struct semaphore *edmac_done_sem = NULL;
+
+static void edmac_done_give_sem(void *unused)
+{
+    give_semaphore(edmac_done_sem);
+}
+
 static void stub_test_edmac()
 {
+    if (!edmac_done_sem)
+        edmac_done_sem = create_named_semaphore("edmac_test", SEM_CREATE_LOCKED);
+
     int size = 8*1024*1024;
     uint32_t *src, *dst;
     TEST_FUNC_CHECK(src = fio_malloc(size), != 0);
@@ -156,7 +167,7 @@ static void stub_test_edmac()
 
         /* abort in the middle of copying */
         TEST_FUNC_CHECK(memcmp(dst, src, size), != 0);
-        TEST_FUNC_CHECK(edmac_memcpy_start(dst, src, size), == (int) dst);
+        TEST_FUNC_CHECK(edmac_copy_rect_async(dst, src, 4096, 0, 0, 4096, 0, 0, 4096, size / 4096, edmac_done_give_sem, NULL), == (int) dst);
 
         /* wait until the middle of the buffer */
         /* caveat: busy waiting; do not use in practice */
@@ -187,7 +198,8 @@ static void stub_test_edmac()
         /* did it copy as much as it reported? */
         TEST_FUNC_CHECK(memcmp(dst, src, copied), == 0);
         TEST_FUNC_CHECK(memcmp(dst, src, copied + 16), != 0);
-        TEST_VOID(edmac_memcpy_finish());
+        /* the abort ends the copy, so the done callback must have run */
+        TEST_FUNC_CHECK(take_semaphore(edmac_done_sem, 1000), == 0);
     }
 
     TEST_VOID(free(src));
@@ -207,6 +219,9 @@ static void busy_wait_ms(int ms)
 static void stub_test_cache_bmp()
 {
     TEST_MSG("Cache test A (EDMAC on BMP buffer)...\n");
+
+    if (!edmac_done_sem)
+        edmac_done_sem = create_named_semaphore("edmac_test", SEM_CREATE_LOCKED);
 
     void * bmp;
     TEST_FUNC_CHECK(bmp = bmp_load("ML/CROPMKS/CINESCO2.BMP", 1), != 0);
@@ -249,14 +264,15 @@ static void stub_test_cache_bmp()
         /* this is generally incorrect; you should use fio_malloc instead. */
         dst = UNCACHEABLE(dst);
 
-        edmac_copy_rectangle_adv_start(dst, src, 960, 0, 0, 960, 0, 0, 720, 480);
+        edmac_copy_rect_async(dst, src, 960, 0, 0, 960, 0, 0, 720, 480,
+                              edmac_done_give_sem, NULL);
 
         /* wait for EDMAC transfer to finish */
         /* probably not needed, as take_semaphore will re-enable interrupts */
         busy_wait_ms(1000);
 
-        /* cleanup EDMAC transfer */
-        edmac_copy_rectangle_finish();
+        /* the done callback runs once interrupts are enabled again */
+        take_semaphore(edmac_done_sem, 1000);
 
         /* interrupts are disabled again - from DryOS context switch */
         /* now compare the image buffers */
@@ -2248,10 +2264,10 @@ static void edmac_test_task()
     int yPos = 0;
 
     edmac_copy_lock_resources();
-    edmac_copy_rectangle_adv(BMP_VRAM_START(idle), BMP_VRAM_START(real), 960, 120, 50, 960, 120, 50, 720, 440);
+    edmac_copy_rect(BMP_VRAM_START(idle), BMP_VRAM_START(real), 960, 120, 50, 960, 120, 50, 720, 440);
     while(true)
     {
-        edmac_copy_rectangle_adv(BMP_VRAM_START(real), BMP_VRAM_START(idle), 960, 120, 50, 960, 120+xPos, 50+yPos, 720-xPos, 440-yPos);
+        edmac_copy_rect(BMP_VRAM_START(real), BMP_VRAM_START(idle), 960, 120, 50, 960, 120+xPos, 50+yPos, 720-xPos, 440-yPos);
         xPos += xOff;
 
         if(xPos >= 100 || xPos <= -100)

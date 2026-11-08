@@ -3,7 +3,7 @@
 /* optional routines */
 extern WEAK_FUNC(ret_0) void* dma_memcpy(void* dest, void* srce, size_t n);
 extern WEAK_FUNC(ret_0) void* edmac_memcpy(void* dest, void* srce, size_t n);
-extern WEAK_FUNC(ret_0) void* edmac_copy_rectangle_adv(void* dst, void* src, int src_width, int src_x, int src_y, int dst_width, int dst_x, int dst_y, int w, int h);
+extern WEAK_FUNC(ret_0) void* edmac_copy_rect(void* dst, void* src, int src_pitch, int src_x, int src_y, int dst_pitch, int dst_x, int dst_y, int w, int h);
 
 #define HAS_DMA_MEMCPY ((void*)&dma_memcpy != (void*)&ret_0)
 #define HAS_EDMAC_MEMCPY ((void*)&edmac_memcpy != (void*)&ret_0)
@@ -215,13 +215,13 @@ static uint32_t mem_test_bmp_fill(int arg0, int arg1, int arg2, int arg3)
     return 0;
 }
 
-static uint32_t mem_test_edmac_copy_rectangle(int arg0, int arg1, int arg2, int arg3)
+static uint32_t mem_test_edmac_copy_rect(int arg0, int arg1, int arg2, int arg3)
 {
     uint8_t *real = BMP_VRAM_START(bmp_vram_real());
     uint8_t *idle = BMP_VRAM_START(bmp_vram_idle());
 
     /* careful - do not mix cacheable and uncacheable pointers unless you know what you are doing */
-    return (uint32_t)edmac_copy_rectangle_adv(UNCACHEABLE(idle), UNCACHEABLE(real), 960, 0, 0, 960, 0, 0, 720, 480);
+    return (uint32_t)edmac_copy_rect(UNCACHEABLE(idle), UNCACHEABLE(real), 960, 0, 0, 960, 0, 0, 720, 480);
 }
 
 static void mem_benchmark_simple_task()
@@ -296,7 +296,7 @@ static void mem_benchmark_simple_task()
     {
         mem_benchmark_run("edmac_memcpy             ", &y, bufsize, edmac_memcpy_wrapper,
                           (intptr_t)UNCACHEABLE(buf1), (intptr_t)UNCACHEABLE(buf2), bufsize, 0, 1, 250);
-        mem_benchmark_run("edmac_copy_rectangle     ", &y, 720*480, (mem_bench_fun)mem_test_edmac_copy_rectangle,
+        mem_benchmark_run("edmac_copy_rect          ", &y, 720*480, (mem_bench_fun)mem_test_edmac_copy_rect,
                           0, 0, 0, 0, 0, 250);
     }
 
@@ -372,7 +372,7 @@ static void mem_benchmark_task()
     {
         mem_benchmark_run("edmac_memcpy        ", &y, bufsize, edmac_memcpy_wrapper,
                           (intptr_t)UNCACHEABLE(buf1), (intptr_t)UNCACHEABLE(buf2), bufsize, 0, 1, 250);
-        mem_benchmark_run("edmac_copy_rectangle", &y, 720*480, (mem_bench_fun)mem_test_edmac_copy_rectangle,
+        mem_benchmark_run("edmac_copy_rect     ", &y, 720*480, (mem_bench_fun)mem_test_edmac_copy_rect,
                           0, 0, 0, 0, 0, 1000);
     }
     

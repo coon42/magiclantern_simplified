@@ -215,20 +215,20 @@ static void copy_done_give_sem(void *ctx)
     give_semaphore(copy_done_sem);
 }
 
-void* edmac_copy_rectangle_adv_start(void* dst, void* src,
-                                     int src_width, int src_x, int src_y,
-                                     int dst_width, int dst_x, int dst_y,
-                                     int w, int h)
+void *edmac_copy_rect(void *dst, void *src,
+                      int src_pitch, int src_x, int src_y,
+                      int dst_pitch, int dst_x, int dst_y,
+                      int w, int h)
 {
-    return edmac_copy_rect_async(dst, src,
-                                 src_width, src_x, src_y,
-                                 dst_width, dst_x, dst_y,
-                                 w, h, copy_done_give_sem, NULL);
-}
+    void *ans = edmac_copy_rect_async(dst, src,
+                                      src_pitch, src_x, src_y,
+                                      dst_pitch, dst_x, dst_y,
+                                      w, h, copy_done_give_sem, NULL);
+    if (!ans)
+    {
+        return NULL;
+    }
 
-/* Waits for a copy started by one of the *_start() functions. */
-void edmac_copy_rectangle_finish()
-{
     if (take_semaphore(copy_done_sem, 1000))
     {
         NotifyBox(2000, "EDMAC timeout");
@@ -241,18 +241,7 @@ void edmac_copy_rectangle_finish()
         }
         sei(old);
     }
-}
 
-void* edmac_copy_rectangle_adv(void* dst, void* src,
-                               int src_width, int src_x, int src_y,
-                               int dst_width, int dst_x, int dst_y,
-                               int w, int h)
-{
-    void* ans = edmac_copy_rectangle_adv_start(dst, src,
-                                               src_width, src_x, src_y,
-                                               dst_width, dst_x, dst_y,
-                                               w, h);
-    if (ans) edmac_copy_rectangle_finish();
     return ans;
 }
 
@@ -278,35 +267,20 @@ static uint32_t find_divider(size_t length)
     return 0;
 }
 
-void* edmac_memcpy_start(void* dst, void* src, size_t length)
+void *edmac_memcpy(void *dst, void *src, size_t length)
 {
-    int blocksize = find_divider(length);
+    int w = find_divider(length);
 
-    if (!blocksize)
+    if (!w)
     {
         printf("[edmac] warning: using memcpy (size=%d)\n", length);
-        void * ret = memcpy(dst, src, length);
-        /* simulate a finished copy for edmac_memcpy_finish() */
-        give_semaphore(copy_done_sem);
-        return ret;
+        return memcpy(dst, src, length);
     }
 
-    return edmac_copy_rectangle_adv_start(dst, src,
-                                          blocksize, 0, 0,
-                                          blocksize, 0, 0,
-                                          blocksize, length / blocksize);
-}
-
-void edmac_memcpy_finish()
-{
-    edmac_copy_rectangle_finish();
-}
-
-void* edmac_memcpy(void* dst, void* src, size_t length)
-{
-    void * ans = edmac_memcpy_start(dst, src, length);
-    edmac_memcpy_finish();
-    return ans;
+    return edmac_copy_rect(dst, src,
+                           w, 0, 0,
+                           w, 0, 0,
+                           w, length / w);
 }
 
 #else /* !CONFIG_EDMAC_MEMCPY */

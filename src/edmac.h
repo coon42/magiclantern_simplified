@@ -1,19 +1,41 @@
 #ifndef _edmac_h_
 #define _edmac_h_
 
+/*
+ * EDMAC: the "engine DMA" controller Canon uses to move image data between
+ * RAM and the image processing blocks (and, via a loopback connection,
+ * between two RAM buffers; see edmac-memcpy.h for that).
+ *
+ * A transfer uses one *channel*.  Write channels move data from a
+ * *connection* (an image processing block output) into RAM; read channels
+ * move data from RAM into a connection.  The channel number alone tells
+ * the direction, see edmac_get_dir().
+ *
+ * This header has three parts:
+ * - the register layout and transfer geometry (struct edmac_info),
+ * - Canon's own functions to drive a channel (stubs, Canon names kept so
+ *   they can be found in the firmware),
+ * - ML helpers to inspect channels; these read the registers directly and
+ *   only know the DIGIC 4/5 register map.
+ */
+
 #include "module.h"
 #include "compiler.h" // for SIZE_CHECK_STRUCT
-
 
 #define EDMAC_DIR_READ    0
 #define EDMAC_DIR_WRITE   1
 #define EDMAC_DIR_UNUSED  2
 
+/* Transfer size, for the flags argument of SetEDmac().
+ * DIGIC 4 can do up to 4 bytes per transfer, DIGIC 5 up to 16. */
 #define EDMAC_16_BYTES_PER_TRANSFER         0x40001000
 #define EDMAC_8_BYTES_PER_TRANSFER          0x20001000
 #define EDMAC_4_BYTES_PER_TRANSFER          0x40000000
 #define EDMAC_2_BYTES_PER_TRANSFER          0x20000000
 
+/* Transfer geometry, see edmac_data_size() for how the fields combine.
+ * The common case is a w x h rectangle out of a buffer with a larger pitch:
+ * .xb = w, .yb = h - 1, .off1b = pitch - w. */
 #if defined(CONFIG_DIGIC_8X)
 struct edmac_info
 {
@@ -113,11 +135,40 @@ struct edmac_mmio
 #endif
 SIZE_CHECK_STRUCT(edmac_mmio, 0x100);
 
-void SetEDmac(unsigned int channel, void *address, struct edmac_info *ptr, int flags);
-void StartEDmac(unsigned int channel, int flags);
+/*
+ * Canon firmware.  On many DIGIC 6+ ports these are empty placeholders in
+ * function_overrides.c, so code using them is in practice D4/D5 only.
+ */
+void ConnectWriteEDmac(unsigned int channel, unsigned int connection);
+void ConnectReadEDmac(unsigned int channel, unsigned int connection);
+void SetEDmac(unsigned int channel, void *address, struct edmac_info *info, int flags);
+void StartEDmac(unsigned int channel, int flags); /* ML uses 0 for write, 2 for read channels */
 void AbortEDmac(unsigned int channel);
-void ConnectWriteEDmac(unsigned int channel, unsigned int where);
-void ConnectReadEDmac(unsigned int channel, unsigned int where);
+
+void RegisterEDmacCompleteCBR(int channel, void (*cbr)(void *), void *ctx);
+void RegisterEDmacAbortCBR(int channel, void (*cbr)(void *), void *ctx);
+void RegisterEDmacPopCBR(int channel, void (*cbr)(void *), void *ctx);
+void UnregisterEDmacCompleteCBR(int channel);
+void UnregisterEDmacAbortCBR(int channel);
+void UnregisterEDmacPopCBR(int channel);
+
+/* Engine resource locks: the firmware's way of reserving EDMAC channels,
+ * connections and image processing blocks.  A resource ID is
+ * (resource type << 16) | number; see edmac_channel_res_id() and
+ * EDMAC_*_CONN_RES_ID() for the EDMAC ones. */
+struct LockEntry *CreateResLockEntry(uint32_t *resIds, uint32_t resIdCount);
+unsigned int LockEngineResources(struct LockEntry *lockEntry);
+unsigned int UnLockEngineResources(struct LockEntry *lockEntry);
+
+/*
+ * ML helpers (edmac.c)
+ */
+
+/* Register cbr(ctx) for completion, abort and pop on a channel, i.e. for
+ * every way a transfer can end.  edmac_clear_cbr() restores Canon's
+ * defaults.  The callback runs in interrupt context. */
+void edmac_set_cbr(uint32_t channel, void (*cbr)(void *), void *ctx);
+void edmac_clear_cbr(uint32_t channel);
 
 /* Resource IDs for CreateResLockEntry(); 0xFFFFFFFF if the channel is unused. */
 uint32_t edmac_channel_res_id(uint32_t channel);
@@ -135,7 +186,6 @@ uint32_t edmac_get_flags(uint32_t channel);        /* as passed to SetEDmac() */
 uint32_t edmac_get_start_addr(uint32_t channel);   /* buffer address as set up */
 uint32_t edmac_get_current_addr(uint32_t channel); /* transfer position (live register) */
 uint32_t edmac_get_connection(uint32_t channel, uint32_t direction);
-
 struct edmac_info edmac_get_info(uint32_t channel);
 
 /* Bytes actually moved by a transfer with this geometry, and the size of
@@ -143,6 +193,7 @@ struct edmac_info edmac_get_info(uint32_t channel);
 uint32_t edmac_data_size(struct edmac_info *info);
 uint32_t edmac_span_size(struct edmac_info *info);
 
+/* Decodes EDMAC_*_BYTES_PER_TRANSFER from SetEDmac() flags; 0 if unknown. */
 uint32_t edmac_bytes_per_transfer(uint32_t flags);
 
 /* provided by edmac.mo */
@@ -151,27 +202,5 @@ char * edmac_format_size(struct edmac_info * info);
 #else
 static char * (*edmac_format_size)(struct edmac_info * info) = MODULE_FUNCTION(edmac_format_size);
 #endif
-
-/* Engine resource locks: the firmware's way of reserving EDMAC channels,
- * connections and image processing blocks.  A resource ID is
- * (resource type << 16) | number; see edmac_channel_res_id() and
- * EDMAC_*_CONN_RES_ID() for the EDMAC ones. */
-struct LockEntry *CreateResLockEntry(uint32_t *resIds, uint32_t resIdCount);
-unsigned int LockEngineResources(struct LockEntry *lockEntry);
-unsigned int UnLockEngineResources(struct LockEntry *lockEntry);
-
-void RegisterEDmacCompleteCBR(int channel, void (*cbr)(void*), void* cbr_ctx);
-void RegisterEDmacAbortCBR(int channel, void (*cbr)(void*), void* cbr_ctx);
-void RegisterEDmacPopCBR(int channel, void (*cbr)(void*), void* cbr_ctx);
-
-void UnregisterEDmacCompleteCBR(int channel);
-void UnregisterEDmacAbortCBR(int channel);
-void UnregisterEDmacPopCBR(int channel);
-
-/* Register cbr(ctx) for completion, abort and pop on a channel, i.e. for
- * every way a transfer can end.  edmac_clear_cbr() restores Canon's
- * defaults.  The callback runs in interrupt context. */
-void edmac_set_cbr(uint32_t channel, void (*cbr)(void *), void *ctx);
-void edmac_clear_cbr(uint32_t channel);
 
 #endif // _edmac_h_

@@ -1401,7 +1401,7 @@ static MENU_UPDATE_FUNC(meminfo_display)
             /* show EDMAC addresses on the memory map */
             for (int i = 0; i < 32; i++)
             {
-                int a = edmac_get_address(i);
+                int a = edmac_get_start_address(i);
                 if (a)
                 {
                     int c = MEMORY_MAP_ADDRESS_TO_INDEX(a);

@@ -106,10 +106,10 @@ static void edmac_test_copy(
     
     msleep(100);
     
-    uint32_t src_end_addr = edmac_get_pointer(edmac_read_chan);
-    uint32_t dst_end_addr = edmac_get_pointer(edmac_write_chan);
-    uint32_t expected_src_end_addr = (uint32_t) src + edmac_get_total_size(src_info, 1);
-    uint32_t expected_dst_end_addr = (uint32_t) dst + edmac_get_total_size(dst_info, 1);
+    uint32_t src_end_addr = edmac_get_current_address(edmac_read_chan);
+    uint32_t dst_end_addr = edmac_get_current_address(edmac_write_chan);
+    uint32_t expected_src_end_addr = (uint32_t) src + edmac_transfer_span(src_info);
+    uint32_t expected_dst_end_addr = (uint32_t) dst + edmac_transfer_span(dst_info);
 
     if (src_end_addr != expected_src_end_addr)
     {
@@ -129,8 +129,8 @@ static void edmac_test_copy(
 
     if (check_copy)
     {
-        int total_size_src = edmac_get_total_size(src_info, 0);
-        int total_size_dst = edmac_get_total_size(dst_info, 0);
+        int total_size_src = edmac_transfer_size(src_info);
+        int total_size_dst = edmac_transfer_size(dst_info);
         
         if (total_size_src != total_size_dst)
         {
@@ -247,8 +247,8 @@ static void Log_edmac_info(struct edmac_info * info)
         if (values[i])
             Log("%s=%d, ", names[i], values[i]);
     Log("\b\b (");
-    Log("size %s", format_memory_size(edmac_get_total_size(info, 0)));
-    Log(", with offsets %s)\n", format_memory_size(edmac_get_total_size(info, 1)));
+    Log("size %s", format_memory_size(edmac_transfer_size(info)));
+    Log(", with offsets %s)\n", format_memory_size(edmac_transfer_span(info)));
 }
 
 static void edmac_print_buffer_contents(char * buf, int size)
@@ -460,13 +460,13 @@ void edmac_test()
             Log("dst: "); Log_edmac_info(&dst_infos[k]);
             memset(dst, 0xEE, dst_size);
 
-            int dst_length = edmac_get_total_size(&dst_infos[k], 0);
+            int dst_length = edmac_transfer_size(&dst_infos[k]);
             int dst_width = edmac_find_divider(dst_length, 16);
             int dst_height = dst_length / dst_width;
             ASSERT(dst_length <= dst_size);
             ASSERT(dst_length == dst_width * dst_height);
 
-            int dst_span = edmac_get_total_size(&dst_infos[k], 1);
+            int dst_span = edmac_transfer_span(&dst_infos[k]);
             ASSERT(dst_span < dst_size);
 
             struct edmac_info src_info = {
@@ -538,12 +538,12 @@ void edmac_test()
             Log("dst: "); Log_edmac_info(&edmac_infos[k][1]);
             memset(dst, 0xEE, dst_size);
 
-            int src_bytes = edmac_get_total_size(&edmac_infos[k][0], 0);
-            int dst_bytes = edmac_get_total_size(&edmac_infos[k][0], 0);
+            int src_bytes = edmac_transfer_size(&edmac_infos[k][0]);
+            int dst_bytes = edmac_transfer_size(&edmac_infos[k][0]);
             ASSERT(src_bytes == dst_bytes);
 
-            int src_span = edmac_get_total_size(&edmac_infos[k][0], 1);
-            int dst_span = edmac_get_total_size(&edmac_infos[k][0], 1);
+            int src_span = edmac_transfer_span(&edmac_infos[k][0]);
+            int dst_span = edmac_transfer_span(&edmac_infos[k][0]);
             ASSERT(src_span < src_size);
             ASSERT(dst_span < dst_size);
 

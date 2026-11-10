@@ -537,7 +537,7 @@ int should_run_polling_action(int period_ms, int* last_updated_time) { return 0;
 void menu_add( const char * name, struct menu_entry * new_entry, int count ) {} 
 void menu_open_submenu() {} 
 void redraw_after(int time) {}
-uint32_t edmac_get_address(uint32_t channel) { return 0; }
+uint32_t edmac_get_start_address(uint32_t channel) { return 0; }
 void EngDrvOut(uint32_t reg, uint32_t value) {}
 int hdmi_code = 0;
 void _update_vram_params(){};

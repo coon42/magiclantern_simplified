@@ -54,7 +54,7 @@ static uint32_t read_edmacs[]  = {0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x18, 0x19
 // Looks up supplied channel in read_edmacs[] or write_edmacs[],
 // returns the index within that array if found,
 // -1 if not.
-uint32_t edmac_channel_to_index(uint32_t channel)
+int edmac_channel_to_index(uint32_t channel)
 {
     if (!IS_USED(channel))
     {
@@ -128,7 +128,7 @@ static uint32_t edmac_get_block(uint32_t mmio_addr)
     }
 }
 
-uint32_t edmac_get_channel(uint32_t mmio_addr)
+uint32_t edmac_base_to_channel(uint32_t mmio_addr)
 {
     uint32_t block = edmac_get_block(mmio_addr);
     if (block == 0xFFFFFFFF)
@@ -163,7 +163,7 @@ uint32_t edmac_get_flags(uint32_t channel)
     return shamem_read(edmac_get_base(channel) + 0x04);
 }
 
-uint32_t edmac_get_address(uint32_t channel)
+uint32_t edmac_get_start_address(uint32_t channel)
 {
     if (channel >= NUM_EDMAC_CHANNELS)
     {
@@ -173,7 +173,7 @@ uint32_t edmac_get_address(uint32_t channel)
     return shamem_read(edmac_get_base(channel) + 0x08);
 }
 
-uint32_t edmac_get_pointer(uint32_t channel)
+uint32_t edmac_get_current_address(uint32_t channel)
 {
     if (channel >= NUM_EDMAC_CHANNELS)
     {
@@ -181,16 +181,6 @@ uint32_t edmac_get_pointer(uint32_t channel)
     }
 
     return MEM(edmac_get_base(channel) + 0x08);
-}
-
-uint32_t edmac_get_length(uint32_t channel)
-{
-    if (channel >= NUM_EDMAC_CHANNELS)
-    {
-        return -1;
-    }
-
-    return shamem_read(edmac_get_base(channel) + 0x10);
 }
 
 uint32_t edmac_get_connection(uint32_t channel, uint32_t direction)
@@ -309,31 +299,29 @@ struct edmac_info edmac_get_info(uint32_t channel)
     return info;
 }
 
-// Great, a "total size" function that can return two different sizes.
-// FIXME: split this into two different top-level functions.
-uint32_t edmac_get_total_size(struct edmac_info *info, int include_offsets)
+uint32_t edmac_transfer_size(struct edmac_info *info)
+{
+    int xa = info->xa; int xb = info->xb; int xn = info->xn;
+    int ya = info->ya; int yb = info->yb; int yn = info->yn;
+
+    /* actual amount of data transferred */
+    return (xa * (ya+1) * xn + xb * (ya+1)) * yn +
+           (xa * (yb+1) * xn + xb * (yb+1));
+}
+
+uint32_t edmac_transfer_span(struct edmac_info *info)
 {
     int xa = info->xa; int xb = info->xb; int xn = info->xn;
     int ya = info->ya; int yb = info->yb; int yn = info->yn;
     int off1a = info->off1a; int off1b = info->off1b;
     int off2a = info->off2a; int off2b = info->off2b;
     int off3  = info->off3;
-    
-    /* actual amount of data transferred */
-    uint32_t transfer_data_size =
-        (xa * (ya+1) * xn + xb * (ya+1)) * yn +
-        (xa * (yb+1) * xn + xb * (yb+1));
-    
+
     /* total size covered, including offsets */
-    uint32_t transfer_data_skip_size =
-        (((xa + off1a) * ya + xa + off2a) * xn +
-         ((xb + off1b) * ya + xb + off3)) * yn +
-        (((xa + off1a) * yb + xa + off2b) * xn +
-          (xb + off1b) * yb + xb + off3);
-    
-    return (include_offsets)
-        ? transfer_data_skip_size
-        : transfer_data_size;
+    return (((xa + off1a) * ya + xa + off2a) * xn +
+            ((xb + off1b) * ya + xb + off3)) * yn +
+           (((xa + off1a) * yb + xa + off2b) * xn +
+             (xb + off1b) * yb + xb + off3);
 }
 
 #ifdef CONFIG_DIGIC_V

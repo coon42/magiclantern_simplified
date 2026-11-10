@@ -2136,7 +2136,7 @@ void FAST hack_liveview_vsync()
         for (int channel = 0; channel < 32; channel++)
         {
             /* silence out the EDMACs used for HD and LV buffers */
-            int pitch = edmac_get_length(channel) & 0xFFFF;
+            int pitch = edmac_get_info(channel).xb;
             if (pitch == vram_lv.pitch || pitch == vram_hd.pitch)
             {
                 uint32_t reg = edmac_get_base(channel);

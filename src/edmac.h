@@ -4,15 +4,37 @@
 #include <stdint.h>
 #include "compiler.h" // for SIZE_CHECK_STRUCT
 
+/**
+ * EDMAC: the DMA engine of the image processor.
+ *
+ * A channel moves image data between RAM and a "connection", i.e. some
+ * processing module inside the DIGIC.  Write channels store data coming
+ * from a connection into RAM, read channels feed data from RAM into one.
+ *
+ * This header has three parts:
+ *  - the data structures describing a channel and its transfer geometry,
+ *  - the Canon firmware functions driving a channel (stubs),
+ *  - ML helpers reading back how a channel is configured (edmac.c).
+ *
+ * For copying memory with EDMAC, see edmac-memcpy.h.
+ */
+
+/* Direction of a channel, see edmac_get_dir() */
 #define EDMAC_DIR_READ    0
 #define EDMAC_DIR_WRITE   1
 #define EDMAC_DIR_UNUSED  2
 
+/* Channel flags (4th argument of SetEDmac) selecting the transfer block
+ * size.  DIGIC 4 can do up to 4 bytes per transfer, DIGIC 5 up to 16.
+ * See the EDMAC section of the register map on the wiki. */
 #define EDMAC_16_BYTES_PER_TRANSFER         0x40001000
 #define EDMAC_8_BYTES_PER_TRANSFER          0x20001000
 #define EDMAC_4_BYTES_PER_TRANSFER          0x40000000
 #define EDMAC_2_BYTES_PER_TRANSFER          0x20000000
 
+/* Transfer geometry of a channel (3rd argument of SetEDmac).
+ * The simplest transfer is yb+1 lines of xb bytes each, skipping off1b
+ * bytes after every line; all other fields are 0. */
 #if defined(CONFIG_DIGIC_8X)
 struct edmac_info
 {
@@ -112,32 +134,17 @@ struct edmac_mmio
 #endif
 SIZE_CHECK_STRUCT(edmac_mmio, 0x100);
 
+/**
+ * Canon firmware functions (stubs).
+ *
+ * To run a transfer: register CBRs, connect the channel, SetEDmac,
+ * StartEDmac.  The CBRs are called from interrupt context.
+ */
 void SetEDmac(unsigned int channel, void *address, struct edmac_info *ptr, int flags);
 void StartEDmac(unsigned int channel, int flags);
 void AbortEDmac(unsigned int channel);
 void ConnectWriteEDmac(unsigned int channel, unsigned int where);
 void ConnectReadEDmac(unsigned int channel, unsigned int where);
-
-uint32_t edmac_channel_to_index(uint32_t channel);
-
-uint32_t edmac_get_flags(uint32_t channel);
-uint32_t edmac_get_state(uint32_t channel);     /* 0=idle, 1=running (from hardware) */
-uint32_t edmac_get_base(uint32_t channel);      /* base register */
-uint32_t edmac_get_channel(uint32_t reg);       /* channel from register */
-uint32_t edmac_get_address(uint32_t channel);   /* start address */
-uint32_t edmac_get_pointer(uint32_t channel);   /* current address (from hardware) */
-uint32_t edmac_get_length(uint32_t channel);    /* yb,xb (hi,lo) */
-uint32_t edmac_get_connection(uint32_t channel, uint32_t direction);
-uint32_t edmac_get_dir(uint32_t channel);
-
-struct edmac_info edmac_get_info(uint32_t channel);
-uint32_t edmac_get_total_size(struct edmac_info * info, int include_offsets);
-
-uint32_t edmac_bytes_per_transfer(uint32_t flags);
-
-struct LockEntry *CreateResLockEntry(uint32_t *resIds, uint32_t resIdCount);
-unsigned int LockEngineResources(struct LockEntry *lockEntry);
-unsigned int UnLockEngineResources(struct LockEntry *lockEntry);
 
 void RegisterEDmacCompleteCBR(int channel, void (*cbr)(void*), void* cbr_ctx);
 void RegisterEDmacAbortCBR(int channel, void (*cbr)(void*), void* cbr_ctx);
@@ -146,5 +153,61 @@ void RegisterEDmacPopCBR(int channel, void (*cbr)(void*), void* cbr_ctx);
 void UnregisterEDmacCompleteCBR(int channel);
 void UnregisterEDmacAbortCBR(int channel);
 void UnregisterEDmacPopCBR(int channel);
+
+/* Engine resource locks: exclusive access to a set of EDMAC channels,
+ * connections and processing modules.  Channels are identified in the
+ * resource IDs by their index, see edmac_channel_to_index(). */
+struct LockEntry *CreateResLockEntry(uint32_t *resIds, uint32_t resIdCount);
+unsigned int LockEngineResources(struct LockEntry *lockEntry);
+unsigned int UnLockEngineResources(struct LockEntry *lockEntry);
+
+/**
+ * ML helpers: how is a channel configured, and what is it doing?
+ *
+ * Unless noted otherwise, these return the values last written by Canon
+ * code (from the shadow memory of the registers), not what the hardware
+ * reports.  The register getters return 0xFFFFFFFF for channel numbers
+ * out of range.
+ */
+
+/* EDMAC_DIR_READ, EDMAC_DIR_WRITE or EDMAC_DIR_UNUSED */
+uint32_t edmac_get_dir(uint32_t channel);
+
+/* Position of a channel among the read (or write) channels, as used
+ * in the resource IDs for CreateResLockEntry; -1 for unused channels */
+int edmac_channel_to_index(uint32_t channel);
+
+/* Address of the first register of a channel, and the other way around */
+uint32_t edmac_get_base(uint32_t channel);
+uint32_t edmac_base_to_channel(uint32_t base);
+
+/* 0 = idle, 1 = running (from hardware) */
+uint32_t edmac_get_state(uint32_t channel);
+
+/* Channel flags, as passed to SetEDmac */
+uint32_t edmac_get_flags(uint32_t channel);
+
+/* Memory address where the transfer started */
+uint32_t edmac_get_start_address(uint32_t channel);
+
+/* Memory address the transfer has reached by now (from hardware) */
+uint32_t edmac_get_current_address(uint32_t channel);
+
+/* Connection used by a channel.  The direction decides where to look it
+ * up; for read channels, 0xFF means the connection could not be found. */
+uint32_t edmac_get_connection(uint32_t channel, uint32_t direction);
+
+/* Transfer geometry of a channel */
+struct edmac_info edmac_get_info(uint32_t channel);
+
+/* Number of bytes moved by a transfer with the given geometry */
+uint32_t edmac_transfer_size(struct edmac_info *info);
+
+/* Size of the memory range covered by a transfer with the given
+ * geometry, i.e. the bytes moved plus the bytes skipped (offsets) */
+uint32_t edmac_transfer_span(struct edmac_info *info);
+
+/* Transfer block size selected by the given channel flags, in bytes */
+uint32_t edmac_bytes_per_transfer(uint32_t flags);
 
 #endif

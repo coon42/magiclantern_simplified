@@ -23,7 +23,7 @@ static const char * edmac_format_size_short(struct edmac_info * info, uint32_t m
     if (strlen(sz) > maxlen)
     {
         /* description too complex? just print the total transfer size */
-        return format_memory_size(edmac_get_total_size(info, 0));
+        return format_memory_size(edmac_transfer_size(info));
     }
 
     return sz;
@@ -46,7 +46,7 @@ static void edmac_display_page(int i0, int x0, int y0)
         char msg[100];
         int ch = i0 + i;
 
-        uint32_t addr = edmac_get_address(ch);
+        uint32_t addr = edmac_get_start_address(ch);
 
         int state = edmac_get_state(ch);
 
@@ -182,7 +182,7 @@ static void edmac_display_conn(int page)
             {
                 if (c == conn)
                 {
-                    if (conn != 0 || edmac_get_pointer(chan))
+                    if (conn != 0 || edmac_get_current_address(chan))
                     {
                         /* connection #0: finding the associated channel is not reliable
                          * heuristic: pick the channel with configured address */
@@ -194,7 +194,7 @@ static void edmac_display_conn(int page)
             {
                 if (c == conn)
                 {
-                    if (conn != 0 || edmac_get_pointer(chan))
+                    if (conn != 0 || edmac_get_current_address(chan))
                     {
                         /* connection #0: finding the associated channel is not reliable
                          * heuristic: pick the channel with configured address */
@@ -215,9 +215,9 @@ static void edmac_display_conn(int page)
                 /* show the channels on the memory map */
                 struct edmac_info info = edmac_get_info(ch);
                 uint32_t dir  = edmac_get_dir(ch);
-                uint64_t addr = (uint32_t)CACHEABLE(edmac_get_address(ch));
-                uint64_t ptr  = (uint32_t)CACHEABLE(edmac_get_pointer(ch));
-                uint64_t last = addr + edmac_get_total_size(&info, 1);
+                uint64_t addr = (uint32_t)CACHEABLE(edmac_get_start_address(ch));
+                uint64_t ptr  = (uint32_t)CACHEABLE(edmac_get_current_address(ch));
+                uint64_t last = addr + edmac_transfer_span(&info);
 
                 int ya = 50 + addr * 400 / 0x20000000;
                 int yp = 50 + ptr  * 400 / 0x20000000;
@@ -302,7 +302,7 @@ static void edmac_display_detailed(int channel)
 
     uint32_t state = edmac_get_state(channel);
     uint32_t flags = edmac_get_flags(channel);
-    uint32_t addr  = edmac_get_address(channel);
+    uint32_t addr  = edmac_get_start_address(channel);
 
     char flags_desc[32] = "";
     if (flags)
@@ -531,7 +531,7 @@ static void edmac_regs_init()
     /* fixme: expose via API */
     for (uint32_t i = 0; i < num_edmac_regs; i++)
     {
-        int ch = edmac_get_channel(edmac_regs[i]);
+        int ch = edmac_base_to_channel(edmac_regs[i]);
         if (edmac_get_dir(ch) == EDMAC_DIR_UNUSED)
         {
             /* register not valid? stop here */
@@ -584,7 +584,7 @@ static void FAST edmac_spy_poll(int last_expiry, void* unused)
 
     for (uint32_t i = 0; i < num_edmac_regs; i++)
     {
-        /* edmac_get_state/pointer(channel), just faster */
+        /* edmac_get_state/current_address(channel), just faster */
         uint32_t state = MEM(edmac_regs[i]);
         uint32_t ptr   = MEM(edmac_regs[i] + 8);
         ASSERT((state & ~1) == 0);
@@ -603,10 +603,10 @@ static void FAST edmac_spy_poll(int last_expiry, void* unused)
 
             if (edmac_extra_index < COUNT(edmac_extra_infos))
             {
-                uint32_t ch = edmac_get_channel(edmac_regs[i]);
+                uint32_t ch = edmac_base_to_channel(edmac_regs[i]);
                 edmac_extra_infos[edmac_extra_index] = (struct edmac_extra_info) {
                     .ch     = ch,
-                    .addr   = edmac_get_address(ch),
+                    .addr   = edmac_get_start_address(ch),
                     .conn   = edmac_get_connection(ch, edmac_get_dir(ch)),
                     .info   = edmac_get_info(ch),
                     .cbr    = is_5d3 ? MEM(8 + 32*(ch) + MEM(0x12400)) : 0,  /* hardcoded for 5D3 */
@@ -676,7 +676,7 @@ static void edmac_spy_dump()
 
         for (uint32_t j = 0; j < num_edmac_regs; j++)
         {
-            int ch = edmac_get_channel(edmac_regs[j]);
+            int ch = edmac_base_to_channel(edmac_regs[j]);
             len += snprintf(out+len, maxlen-len, " %d:%08X", ch, edmac_states[i][j]);
         }
 

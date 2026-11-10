@@ -27,7 +27,7 @@ enum recording_state get_recording_state(void)
 
 // lv_save_raw trick (which we trigger indirectly via raw.c, raw_lv_request(),
 // has given us a buffer of whatever size DryOS wants for fullsize LV.  We can
-// crop this down with edmac_copy_rectangle_cbr_start(), DMA based and fast enough
+// crop this down with edmac_copy_rect_async(), DMA based and fast enough
 // to do each frame.
 struct crop_buf 
 {
@@ -136,16 +136,11 @@ static void alloc_crop_bufs(struct crop_buf crop_bufs[])
     crop_bufs[1].end = crop_bufs[1].start + buf_size;
 }
 
-// Old DryOS used to trigger this, new DryOS
-// seems to only trigger the write complete cbr.
-static void edmac_cbr_r(void *unused_ctx)
-{
-}
-
 // Triggers when EDMAC write operation is complete.
-static void edmac_cbr_w(void *unused_ctx)
+// (Old DryOS used to trigger a read complete cbr as well, new DryOS
+// seems to only trigger the write complete cbr.)
+static void edmac_copy_done_cbr(void *unused_ctx)
 {
-    edmac_copy_rectangle_adv_cleanup();
     give_semaphore(edmac_sem); // signal edmac copy rect as safe to use
 }
 
@@ -350,14 +345,16 @@ static void worker(void)
                      event->w, event->h, line_size * event->h);
             send_log_data_str(log_buf);
             #endif
-            edmac_copy_rectangle_cbr_start(
-                (void*)dst, event->src,
-                raw_info.pitch, (event->x + 7)/8*BPP, event->y/2*2,
-                line_size, 0, 0,
+            // crop: start at the top-left corner of the wanted area
+            int crop_x = (event->x + 7)/8*BPP; // bytes
+            int crop_y = event->y/2*2; // lines
+            edmac_copy_rect_async(
+                (void*)dst, line_size,
+                event->src + crop_x + crop_y * raw_info.pitch, raw_info.pitch,
                 line_size, event->h,
-                &edmac_cbr_r, &edmac_cbr_w, NULL
+                &edmac_copy_done_cbr, NULL
             );
-            // edmac_cbr_w() will release edmac sem, when copy complete
+            // edmac_copy_done_cbr() will release edmac sem, when copy complete
 
             break;
 

@@ -10,6 +10,11 @@
 static struct semaphore *edmac_memcpy_sem = NULL; /* to allow only one memcpy running at a time */
 static struct semaphore *edmac_read_done_sem = NULL; /* to know when memcpy is finished */
 
+/* what to call when the running copy is finished; NULL for the blocking
+ * copies, where the calling task waits for edmac_read_done_sem instead */
+static void (*edmac_copy_done_cbr)(void *ctx) = NULL;
+static void *edmac_copy_done_ctx = NULL;
+
 /* pick some free (check using debug menu) EDMAC channels write: 0x00-0x06, 0x10-0x16, 0x20-0x21. read: 0x08-0x0D, 0x18-0x1D,0x28-0x2B */
 #if defined(CONFIG_5D2) || defined(CONFIG_50D)
 uint32_t edmac_memcpy_read_chan = 0x19;
@@ -96,15 +101,6 @@ static void edmac_memcpy_init()
 
 INIT_FUNC("edmac_memcpy", edmac_memcpy_init);
 
-static void edmac_read_complete_cbr(void *ctx)
-{
-    give_semaphore(edmac_read_done_sem);
-}
-
-static void edmac_write_complete_cbr(void * ctx)
-{
-}
-
 void edmac_memcpy_res_lock()
 {
     //~ bmp_printf(FONT_MED, 50, 50, "Locking");
@@ -122,13 +118,51 @@ void edmac_memcpy_res_unlock()
     UnLockEngineResources(resLock);
 }
 
-void* edmac_copy_rectangle_cbr_start(void* dst, void* src,
-                                     int src_width, int src_x, int src_y,
-                                     int dst_width, int dst_x, int dst_y,
-                                     int w, int h,
-                                     void (*cbr_r)(void*), void (*cbr_w)(void*), void *cbr_ctx)
+/* cleanup channel configuration and release semaphore */
+static void edmac_copy_cleanup()
 {
-    // "src_width" is width of the frame including dark areas, borders etc.
+    /* set default CBRs again and stop both DMAs */
+    UnregisterEDmacCompleteCBR(edmac_memcpy_read_chan);
+    UnregisterEDmacAbortCBR(edmac_memcpy_read_chan);
+    UnregisterEDmacPopCBR(edmac_memcpy_read_chan);
+    UnregisterEDmacCompleteCBR(edmac_memcpy_write_chan);
+    UnregisterEDmacAbortCBR(edmac_memcpy_write_chan);
+    UnregisterEDmacPopCBR(edmac_memcpy_write_chan);
+
+    give_semaphore(edmac_memcpy_sem);
+}
+
+/* called (from interrupt) when the read channel is done with the source */
+static void edmac_read_done_cbr(void *ctx)
+{
+    if (!edmac_copy_done_cbr)
+    {
+        /* blocking copy: wake up the task waiting in edmac_copy_finish */
+        give_semaphore(edmac_read_done_sem);
+    }
+}
+
+/* called (from interrupt) when the write channel has stored all the data */
+static void edmac_write_done_cbr(void *ctx)
+{
+    if (edmac_copy_done_cbr)
+    {
+        /* non-blocking copy: nobody is waiting, so tell the caller
+         * and get the channels ready for the next copy from here */
+        edmac_copy_done_cbr(edmac_copy_done_ctx);
+        edmac_copy_cleanup();
+    }
+}
+
+/* set up both channels and start the transfer; returns without waiting.
+ * with done_cbr, the copy finishes on its own, see edmac_write_done_cbr;
+ * without, the caller must wait for it with edmac_copy_finish. */
+static void *edmac_copy_start(void *dst, int dst_pitch,
+                              void *src, int src_pitch,
+                              int w, int h,
+                              void (*done_cbr)(void *ctx), void *ctx)
+{
+    // "src_pitch" is width of the frame including dark areas, borders etc.
     // "w" is the width of the region to copy out, e.g. if stripping the borders.
     //
     // Why three widths?  Because the dst buffer can also conceptually be rectangular,
@@ -162,16 +196,20 @@ void* edmac_copy_rectangle_cbr_start(void* dst, void* src,
 
     take_semaphore(edmac_memcpy_sem, 0);
 
-    uint32_t src_adjusted = ((uint32_t)src & 0x1FFFFFFF) + src_x + src_y * src_width;
-    uint32_t dst_adjusted = ((uint32_t)dst & 0x1FFFFFFF) + dst_x + dst_y * dst_width;
+    /* the previous copy is finished, now its callback can be replaced */
+    edmac_copy_done_cbr = done_cbr;
+    edmac_copy_done_ctx = ctx;
+
+    uint32_t src_adjusted = (uint32_t)src & 0x1FFFFFFF;
+    uint32_t dst_adjusted = (uint32_t)dst & 0x1FFFFFFF;
 
     /* only read channel will emit a callback when reading from memory is done. write channels would just continue */
-    RegisterEDmacCompleteCBR(edmac_memcpy_read_chan, cbr_r, cbr_ctx);
-    RegisterEDmacAbortCBR(edmac_memcpy_read_chan, cbr_r, cbr_ctx);
-    RegisterEDmacPopCBR(edmac_memcpy_read_chan, cbr_r, cbr_ctx);
-    RegisterEDmacCompleteCBR(edmac_memcpy_write_chan, cbr_w, cbr_ctx);
-    RegisterEDmacAbortCBR(edmac_memcpy_write_chan, cbr_w, cbr_ctx);
-    RegisterEDmacPopCBR(edmac_memcpy_write_chan, cbr_w, cbr_ctx);
+    RegisterEDmacCompleteCBR(edmac_memcpy_read_chan, &edmac_read_done_cbr, NULL);
+    RegisterEDmacAbortCBR(edmac_memcpy_read_chan, &edmac_read_done_cbr, NULL);
+    RegisterEDmacPopCBR(edmac_memcpy_read_chan, &edmac_read_done_cbr, NULL);
+    RegisterEDmacCompleteCBR(edmac_memcpy_write_chan, &edmac_write_done_cbr, NULL);
+    RegisterEDmacAbortCBR(edmac_memcpy_write_chan, &edmac_write_done_cbr, NULL);
+    RegisterEDmacPopCBR(edmac_memcpy_write_chan, &edmac_write_done_cbr, NULL);
     
     /* connect the selected channels to 6 so any data read from RAM is passed to write channel */
     ConnectWriteEDmac(edmac_memcpy_write_chan, edmac_memcpy_connection);
@@ -183,14 +221,14 @@ void* edmac_copy_rectangle_cbr_start(void* dst, void* src,
     struct edmac_info src_edmac_info = {
         .xb = w,
         .yb = h-1,
-        .off1b = src_width - w,
+        .off1b = src_pitch - w,
     };
     
     /* destination setup has no special cropping */
     struct edmac_info dst_edmac_info = {
         .xb = w,
         .yb = h-1,
-        .off1b = dst_width - w,
+        .off1b = dst_pitch - w,
     };
     
     SetEDmac(edmac_memcpy_read_chan, (void*)src_adjusted, &src_edmac_info, edmac_memcpy_flags);
@@ -203,24 +241,10 @@ void* edmac_copy_rectangle_cbr_start(void* dst, void* src,
     return dst;
 }
 
-/* cleanup channel configuration and release semaphore */
-void edmac_copy_rectangle_adv_cleanup()
-{
-    /* set default CBRs again and stop both DMAs */
-    UnregisterEDmacCompleteCBR(edmac_memcpy_read_chan);
-    UnregisterEDmacAbortCBR(edmac_memcpy_read_chan);
-    UnregisterEDmacPopCBR(edmac_memcpy_read_chan);
-    UnregisterEDmacCompleteCBR(edmac_memcpy_write_chan);
-    UnregisterEDmacAbortCBR(edmac_memcpy_write_chan);
-    UnregisterEDmacPopCBR(edmac_memcpy_write_chan);
-
-    give_semaphore(edmac_memcpy_sem);
-}
-
 /* this function waits for the DMA transfer being finished by blocked wait on the read semaphore.
    as soon the semaphore was taken, cleanup edmac configuration and release global EDMAC semaphore.
  */
-void edmac_copy_rectangle_adv_finish()
+static void edmac_copy_finish()
 {
     /* wait until read is finished */
     int r = take_semaphore(edmac_read_done_sem, 1000);
@@ -229,7 +253,7 @@ void edmac_copy_rectangle_adv_finish()
         NotifyBox(2000, "EDMAC timeout");
     }
     
-    edmac_copy_rectangle_adv_cleanup();
+    edmac_copy_cleanup();
 }
 
 void* edmac_copy_rectangle_adv_start(void* dst, void* src,
@@ -237,11 +261,10 @@ void* edmac_copy_rectangle_adv_start(void* dst, void* src,
                                      int dst_width, int dst_x, int dst_y,
                                      int w, int h)
 {
-    return edmac_copy_rectangle_cbr_start(dst, src,
-                                          src_width, src_x, src_y,
-                                          dst_width, dst_x, dst_y,
-                                          w, h,
-                                          &edmac_read_complete_cbr, &edmac_write_complete_cbr, NULL);
+    void* ans = edmac_copy_start(dst + dst_x + dst_y * dst_width, dst_width,
+                                 src + src_x + src_y * src_width, src_width,
+                                 w, h, NULL, NULL);
+    return ans ? dst : 0;
 }
 
 void* edmac_copy_rectangle_adv(void* dst, void* src,
@@ -253,7 +276,7 @@ void* edmac_copy_rectangle_adv(void* dst, void* src,
                                                src_width, src_x, src_y,
                                                dst_width, dst_x, dst_y,
                                                w, h);
-    if (ans) edmac_copy_rectangle_adv_finish();
+    if (ans) edmac_copy_finish();
     return ans;
 }
 
@@ -269,7 +292,7 @@ void* edmac_copy_rectangle_start(void* dst, void* src, int src_width, int x, int
 
 void edmac_copy_rectangle_finish()
 {
-    edmac_copy_rectangle_adv_finish();
+    edmac_copy_finish();
 }
 
 void* edmac_memset(void* dst, int value, size_t length)
@@ -306,9 +329,25 @@ void* edmac_memset(void* dst, int value, size_t length)
         memset(dst + length - trailing, value, trailing);
     }
 
-    edmac_copy_rectangle_adv_finish();
+    edmac_copy_finish();
     
     return dst;
+}
+
+static void edmac_copy_no_cbr(void *ctx)
+{
+}
+
+void *edmac_copy_rect_async(void *dst, int dst_pitch,
+                            void *src, int src_pitch,
+                            int w, int h,
+                            void (*done_cbr)(void *ctx), void *ctx)
+{
+    /* without a callback, this would be taken for a blocking copy,
+     * and the channels would never be released */
+    if (!done_cbr) done_cbr = &edmac_copy_no_cbr;
+
+    return edmac_copy_start(dst, dst_pitch, src, src_pitch, w, h, done_cbr, ctx);
 }
 
 uint32_t edmac_find_divider(size_t length, size_t transfer_size)
@@ -350,6 +389,7 @@ void* edmac_memcpy_start(void* dst, void* src, size_t length)
         void * ret = memcpy(dst, src, length);
         /* simulate a started copy operation */
         take_semaphore(edmac_memcpy_sem, 0);
+        edmac_copy_done_cbr = NULL;
         give_semaphore(edmac_read_done_sem);
         return ret;
     }
@@ -362,7 +402,7 @@ void* edmac_memcpy_start(void* dst, void* src, size_t length)
 
 void edmac_memcpy_finish()
 {
-    edmac_copy_rectangle_adv_finish();
+    edmac_copy_finish();
 }
 
 

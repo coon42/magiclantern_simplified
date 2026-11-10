@@ -24,12 +24,25 @@ void* edmac_copy_rectangle_adv(void* dst, void* src, int src_width, int src_x, i
 void* edmac_memcpy_start(void* dst, void* src, size_t length);
 void* edmac_copy_rectangle_start(void* dst, void* src, int src_width, int x, int y, int w, int h);
 void* edmac_copy_rectangle_adv_start(void* dst, void* src, int src_width, int src_x, int src_y, int dst_width, int dst_x, int dst_y, int w, int h);
-void* edmac_copy_rectangle_cbr_start(void* dst, void* src, int src_width, int src_x, int src_y, int dst_width, int dst_x, int dst_y, int w, int h, void (*cbr_r)(void*), void (*cbr_w)(void*), void *cbr_ctx);
-void edmac_copy_rectangle_adv_cleanup();
 
 /* these are blocking tho */
 void edmac_memcpy_finish();
 void edmac_copy_rectangle_finish();
+
+/* Copy h lines of w bytes each, without waiting; done_cbr(ctx) is called
+ * once the data has arrived.
+ * Lines start every src_pitch bytes in the source buffer and every
+ * dst_pitch bytes in the destination, so with a pitch larger than w
+ * the rectangle is part of a wider image.  To crop, let src point to
+ * the first byte wanted: src = image + x + y * src_pitch.
+ * Keep done_cbr short and non-blocking: it is called from interrupt
+ * context.  On some cameras the copy is already done when this function
+ * returns, and done_cbr was called on the way, from an interrupt or from
+ * the caller's task.  It is not called when NULL is returned. */
+void *edmac_copy_rect_async(void *dst, int dst_pitch,
+                            void *src, int src_pitch,
+                            int w, int h,
+                            void (*done_cbr)(void *ctx), void *ctx);
 
 /* Lock/unlock engine resources used by edmac_memcpy (only if ported for your camera) */
 void edmac_memcpy_res_lock();

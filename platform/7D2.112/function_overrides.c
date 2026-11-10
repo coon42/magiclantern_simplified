@@ -28,6 +28,7 @@
 #include <consts.h>
 #include <lens.h>
 #include <edmac.h>
+#include <edmac-memcpy.h>
 
 // fake WINSYS_BMP_DIRTY_BIT_NEG
 int winsys_bmp_dirty_bit_neg = 0;
@@ -205,19 +206,20 @@ void edmac_memcpy_res_unlock()
 {
 }
 
-void* edmac_copy_rectangle_cbr_start(void *dst, void *src,
-                                     int src_width, int src_x, int src_y,
-                                     int dst_width, int dst_x, int dst_y,
-                                     int w, int h,
-                                     void (*cbr_r)(void *), void (*cbr_w)(void *), void *cbr_ctx)
+// The copy is done when this returns: dma_memcpy() blocks,
+// and done_cbr is called from here, not from an interrupt.
+void *edmac_copy_rect_async(void *dst, int dst_pitch,
+                            void *src, int src_pitch,
+                            int w, int h,
+                            void (*done_cbr)(void *ctx), void *ctx)
 {
-    // "src_width" is width of the frame including dark areas, borders etc.
+    // "src_pitch" is width of the frame including dark areas, borders etc.
     // "w" is the width of the region to copy out, e.g. if stripping the borders.
 
     if ((src == NULL) || (dst == NULL))
     {
         ASSERT(0);
-        // This returns without clearing edmac_active via cbr_w(),
+        // This returns without clearing edmac_active via done_cbr(),
         // so recording will stall.  Which is fine because it's noticeable
         // and you should never pass null ptrs in.
         return NULL;
@@ -233,22 +235,17 @@ void* edmac_copy_rectangle_cbr_start(void *dst, void *src,
     // Digic 6 cams do EDMAC ops from Omar.  Omar presumably can do it,
     // (and maybe we can trigger it from ICU), but so far we don't know how.
 
-    // These imply mlv_lite should have raw_info.pitch == (res_x * BPP/8)
-    if (src_width != dst_width || dst_width != w)
+    // Without a crop, the lines follow each other with no gap, in both
+    // buffers, and the rectangle is one block of memory.
+    //
+    // This implies mlv_lite should have raw_info.pitch == (res_x * BPP/8),
+    // which only works out with skip_x == 0.
+    if (src_pitch != dst_pitch || dst_pitch != w)
         return NULL;
 
-    // These imply mlv_lite should have skip_x == 0
-    if (src_x != 0 || dst_x != 0)
-        return NULL;
+    dma_memcpy(dst, src, w * h);
 
-    dma_memcpy(dst + (dst_y * dst_width),
-               src + (src_y * src_width),
-               w * h);
-
-    cbr_w(NULL); // clears edmac_active in mlv_lite
+    if (done_cbr)
+        done_cbr(ctx); // e.g. clears edmac_active in mlv_lite
     return dst;
-}
-
-void edmac_copy_rectangle_adv_cleanup()
-{
 }

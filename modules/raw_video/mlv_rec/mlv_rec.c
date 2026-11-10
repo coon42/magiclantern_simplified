@@ -12,7 +12,7 @@
  *      - use any memory chunks that can contain at least one video frame
  *        (they will only be used when recording is about to stop, so no negative impact in sustained write speed)
  *
- * - edmac_copy_rectangle: we can crop the image and trim the black borders!
+ * - edmac_copy_rect: we can crop the image and trim the black borders!
  * - edmac operation done outside the LV task (in background, synchronized)
  * - on buffer overflow, it stops or skips frames (user-selected)
  * - using generic raw routines, no hardcoded stuff (should be easier to port)
@@ -2219,12 +2219,7 @@ static int32_t mlv_prepend_block(uint32_t slot, mlv_hdr_t *block)
     return 4;
 }
 
-static void mlv_rec_dma_cbr_r(void *ctx)
-{
-    
-}
-
-static void mlv_rec_dma_cbr_w(void *ctx)
+static void mlv_rec_dma_done_cbr(void *ctx)
 {
     /* call the VIDF CBRs */
     mlv_rec_call_cbr(MLV_REC_EVENT_VIDF, slots[capture_slot].ptr);
@@ -2233,8 +2228,6 @@ static void mlv_rec_dma_cbr_w(void *ctx)
     
     mlv_rec_dma_end = get_us_clock();
     mlv_rec_dma_duration = (uint32_t)(mlv_rec_dma_end - mlv_rec_dma_start);
-    
-    edmac_copy_rectangle_adv_cleanup();
 }
 
 static int32_t FAST process_frame()
@@ -2289,8 +2282,16 @@ static int32_t FAST process_frame()
         return 0;
     }
     
+    /* crop: start at the top-left corner of the recorded area */
+    int src_pitch = raw_info.width*raw_info.bits_per_pixel/8;
+    int dst_pitch = res_x*raw_info.bits_per_pixel/8;
+    int crop_x = (skip_x+7)/8*raw_info.bits_per_pixel;  /* bytes */
+    int crop_y = skip_y/2*2;                            /* lines */
+    void* crop_ptr = fullSizeBuffer + crop_x + crop_y * src_pitch;
+
     mlv_rec_dma_active = 1;
-    edmac_copy_rectangle_cbr_start(ptr, fullSizeBuffer, raw_info.width*raw_info.bits_per_pixel/8, (skip_x+7)/8*raw_info.bits_per_pixel, skip_y/2*2, res_x*raw_info.bits_per_pixel/8, 0, 0, res_x*raw_info.bits_per_pixel/8, res_y, &mlv_rec_dma_cbr_r, &mlv_rec_dma_cbr_w, NULL);
+    edmac_copy_rect_async(ptr, dst_pitch, crop_ptr, src_pitch,
+                          dst_pitch, res_y, &mlv_rec_dma_done_cbr, NULL);
     mlv_rec_dma_start = get_us_clock();
 
     /* copy current frame to our buffer and crop it to its final size */

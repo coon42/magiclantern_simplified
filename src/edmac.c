@@ -83,25 +83,6 @@ uint32_t edmac_channel_to_index(uint32_t channel)
     return -1;
 }
 
-uint32_t edmac_index_to_channel(uint32_t index, uint32_t direction)
-{
-    if (index >= COUNT(read_edmacs))
-    {
-        return -1;
-    }
-    
-    switch (direction)
-    {
-        case EDMAC_DIR_READ:
-            return read_edmacs[index];
-            
-        case EDMAC_DIR_WRITE:
-            return write_edmacs[index];
-    }
-    
-    return -1;
-}
-
 uint32_t edmac_get_dir(uint32_t channel)
 {
     if (!IS_USED(channel))
@@ -283,7 +264,9 @@ uint32_t edmac_get_connection(uint32_t channel, uint32_t direction)
     return shamem_read(addr);
 }
 
-int edmac_fix_off1(int32_t off)
+/* off1/off2 are signed on some odd number of bits;
+ * these extend the sign bit to int32 */
+static int edmac_fix_off1(int32_t off)
 {
     /* the value is signed, but the number of bits is model-dependent */
 #ifdef CONFIG_DIGIC_V
@@ -295,7 +278,7 @@ int edmac_fix_off1(int32_t off)
     return off << (32-off1_bits) >> (32-off1_bits);
 }
 
-int edmac_fix_off2(int32_t off)
+static int edmac_fix_off2(int32_t off)
 {
     /* the value is signed, but the number of bits is model-dependent */
 #ifdef CONFIG_DIGIC_V
@@ -354,9 +337,11 @@ uint32_t edmac_get_total_size(struct edmac_info *info, int include_offsets)
 }
 
 #ifdef CONFIG_DIGIC_V
-#define EDMAC_BYTES_PER_TRANSFER_MASK EDMAC_BYTES_PER_TRANSFER_MASK_D5
+/* digic 5: up to 16 bytes per transfer */
+#define EDMAC_BYTES_PER_TRANSFER_MASK 0x60001000
 #else
-#define EDMAC_BYTES_PER_TRANSFER_MASK EDMAC_BYTES_PER_TRANSFER_MASK_D4
+/* digic 4: up to 4 bytes per transfer */
+#define EDMAC_BYTES_PER_TRANSFER_MASK 0x60000000
 #endif
 
 uint32_t edmac_bytes_per_transfer(uint32_t flags)

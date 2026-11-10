@@ -1,7 +1,7 @@
 #ifndef _edmac_c
 #define _edmac_c
 
-#include "module.h"
+#include <stdint.h>
 #include "compiler.h" // for SIZE_CHECK_STRUCT
 
 #define EDMAC_DIR_READ    0
@@ -134,30 +134,6 @@ struct edmac_info edmac_get_info(uint32_t channel);
 uint32_t edmac_get_total_size(struct edmac_info * info, int include_offsets);
 
 uint32_t edmac_bytes_per_transfer(uint32_t flags);
-
-/* provided by edmac.mo */
-#if defined(MODULE)
-char * edmac_format_size(struct edmac_info * info);
-#else
-static char * (*edmac_format_size)(struct edmac_info * info) = MODULE_FUNCTION(edmac_format_size);
-#endif
-
-// EDMAC mem -> mem copy related, D7.  D7 uses a global for locking
-// the (I assume) mem2mem subsystem.
-// D8X do it a different way: a function that creates a ResLock, locks it
-// with LockEngineResources, then returns it.
-// Maybe we could wrap the D7 way and pretend it's the same as D8, to unify
-// the interface?
-void create_mem_to_mem_lock_and_pwrmng_globals(uint32_t src_channel, uint32_t dst_channel,
-                                               void *resIDs, uint32_t resID_count);
-void lock_and_wake_mem_to_mem(void);
-void unlock_and_sleep_mem_to_mem(void);
-void cleanup_mem_to_mem(void);
-void delete_mem_to_mem_lock(void);
-void set_mem_to_mem_cbr(void *cbr, void *param); // when both dst and src channels are complete, this cbr fires
-void mem_to_mem_setup_copy(struct edmac_info *src, struct edmac_info *dst);
-void mem_to_mem_set_src_dst_and_start(void *src, void *dst);
-void set_default_mem_to_mem_cbr(void);
 
 struct LockEntry *CreateResLockEntry(uint32_t *resIds, uint32_t resIdCount);
 unsigned int LockEngineResources(struct LockEntry *lockEntry);

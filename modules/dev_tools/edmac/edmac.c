@@ -8,6 +8,7 @@
 #include <shoot.h>
 #include <beep.h>
 #include <edmac.h>
+#include "edmac_util.h"
 #include <timer.h>
 #include <asm.h>
 

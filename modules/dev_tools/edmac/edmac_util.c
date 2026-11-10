@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <edmac.h>
+#include "edmac_util.h"
 
 #define STR_APPEND(orig,fmt,...) ({ int _len = strlen(orig); snprintf(orig + _len, sizeof(orig) - _len, fmt, ## __VA_ARGS__); });
 

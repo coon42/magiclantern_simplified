@@ -256,82 +256,13 @@ static void edmac_copy_finish()
     edmac_copy_cleanup();
 }
 
-void* edmac_copy_rectangle_adv_start(void* dst, void* src,
-                                     int src_width, int src_x, int src_y,
-                                     int dst_width, int dst_x, int dst_y,
-                                     int w, int h)
+void *edmac_copy_rect(void *dst, int dst_pitch,
+                      void *src, int src_pitch,
+                      int w, int h)
 {
-    void* ans = edmac_copy_start(dst + dst_x + dst_y * dst_width, dst_width,
-                                 src + src_x + src_y * src_width, src_width,
-                                 w, h, NULL, NULL);
-    return ans ? dst : 0;
-}
-
-void* edmac_copy_rectangle_adv(void* dst, void* src,
-                               int src_width, int src_x, int src_y,
-                               int dst_width, int dst_x, int dst_y,
-                               int w, int h)
-{
-    void* ans = edmac_copy_rectangle_adv_start(dst, src,
-                                               src_width, src_x, src_y,
-                                               dst_width, dst_x, dst_y,
-                                               w, h);
+    void *ans = edmac_copy_start(dst, dst_pitch, src, src_pitch, w, h, NULL, NULL);
     if (ans) edmac_copy_finish();
     return ans;
-}
-
-void* edmac_copy_rectangle(void* dst, void* src, int src_width, int x, int y, int w, int h)
-{
-    return edmac_copy_rectangle_adv(dst, src, src_width, x, y, w, 0, 0, w, h);
-}
-
-void* edmac_copy_rectangle_start(void* dst, void* src, int src_width, int x, int y, int w, int h)
-{
-    return edmac_copy_rectangle_adv_start(dst, src, src_width, x, y, w, 0, 0, w, h);
-}
-
-void edmac_copy_rectangle_finish()
-{
-    edmac_copy_finish();
-}
-
-void* edmac_memset(void* dst, int value, size_t length)
-{
-    uint32_t blocksize = 64;
-    uint32_t leading = MIN(length, (blocksize - ((uint32_t)dst % blocksize)) % blocksize);
-    uint32_t trailing = (length - leading) % blocksize;
-    uint32_t copyable = length - leading - trailing;
-    
-    /* less makes no sense as it would most probably be slower */
-    if(copyable < 8 * blocksize)
-    {
-        return memset(dst, value, length);
-    }
-    
-    uint32_t copies = copyable / blocksize - 1;
-    
-    /* fill the first line to have a copy source */
-    memset(dst + leading, value, blocksize);
-    
-    /* now copy the first line over the next lines */
-    edmac_copy_rectangle_adv_start(dst + leading + blocksize, dst + leading,
-                                   0, 0, 0,
-                                   blocksize, 0, 0,
-                                   blocksize, copies);
-    
-    /* leading or trailing bytes that edmac cannot handle? */
-    if(leading)
-    {
-        memset(dst, value, leading);
-    }
-    if(trailing)
-    {
-        memset(dst + length - trailing, value, trailing);
-    }
-
-    edmac_copy_finish();
-    
-    return dst;
 }
 
 static void edmac_copy_no_cbr(void *ctx)
@@ -379,38 +310,17 @@ uint32_t edmac_find_divider(size_t length, size_t transfer_size)
     return 0;
 }
 
-void* edmac_memcpy_start(void* dst, void* src, size_t length)
+void *edmac_memcpy(void *dst, void *src, size_t length)
 {
-    int blocksize = edmac_find_divider(length, 0);
+    int width = edmac_find_divider(length, 0);
 
-    if (!blocksize)
+    if (!width)
     {
         printf("[edmac] warning: using memcpy (size=%d)\n", length);
-        void * ret = memcpy(dst, src, length);
-        /* simulate a started copy operation */
-        take_semaphore(edmac_memcpy_sem, 0);
-        edmac_copy_done_cbr = NULL;
-        give_semaphore(edmac_read_done_sem);
-        return ret;
+        return memcpy(dst, src, length);
     }
-    
-    return edmac_copy_rectangle_adv_start(dst, src,
-                                          blocksize, 0, 0,
-                                          blocksize, 0, 0,
-                                          blocksize, length / blocksize);
-}
 
-void edmac_memcpy_finish()
-{
-    edmac_copy_finish();
-}
-
-
-void* edmac_memcpy(void* dst, void* src, size_t length)
-{
-    void * ans = edmac_memcpy_start(dst, src, length);
-    edmac_memcpy_finish();
-    return ans;
+    return edmac_copy_rect(dst, width, src, width, width, length / width);
 }
 
 #else // !CONFIG_EDMAC_MEMCPY

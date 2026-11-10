@@ -122,6 +122,19 @@ static int stub_ok = 1;
 static int stub_passed_tests = 0;
 static int stub_failed_tests = 0;
 
+/* for the abort test: a task copying in the background */
+static struct semaphore * edmac_test_sem = 0;
+static void * edmac_test_dst = 0;
+static void * edmac_test_src = 0;
+static int edmac_test_size = 0;
+static void * edmac_test_ret = 0;
+
+static void edmac_test_copy_task()
+{
+    edmac_test_ret = edmac_memcpy(edmac_test_dst, edmac_test_src, edmac_test_size);
+    give_semaphore(edmac_test_sem);
+}
+
 static void stub_test_edmac()
 {
     int size = 8*1024*1024;
@@ -156,7 +169,19 @@ static void stub_test_edmac()
 
         /* abort in the middle of copying */
         TEST_FUNC_CHECK(memcmp(dst, src, size), != 0);
-        TEST_FUNC_CHECK(edmac_memcpy_start(dst, src, size), == (int) dst);
+
+        /* the copy is done by a task with higher priority than ours:
+         * it runs right away, starts the copy and then sleeps until the
+         * copy is finished, so we get to watch the copy from here */
+        if (!edmac_test_sem)
+        {
+            edmac_test_sem = create_named_semaphore("edmac_test", SEM_CREATE_LOCKED);
+        }
+        edmac_test_dst = dst;
+        edmac_test_src = src;
+        edmac_test_size = size;
+        edmac_test_ret = 0;
+        TEST_FUNC(task_create("edmac_test", 0x19, 0x2000, edmac_test_copy_task, 0));
 
         /* wait until the middle of the buffer */
         /* caveat: busy waiting; do not use in practice */
@@ -187,11 +212,19 @@ static void stub_test_edmac()
         /* did it copy as much as it reported? */
         TEST_FUNC_CHECK(memcmp(dst, src, copied), == 0);
         TEST_FUNC_CHECK(memcmp(dst, src, copied + 16), != 0);
-        TEST_VOID(edmac_memcpy_finish());
+
+        /* the copy task gives up waiting after 1 second */
+        TEST_FUNC_CHECK(take_semaphore(edmac_test_sem, 5000), == 0);
+        TEST_FUNC_CHECK(edmac_test_ret, == (int) dst);
     }
 
     TEST_VOID(free(src));
     TEST_VOID(free(dst));
+}
+
+static void edmac_test_done_cbr(void * ctx)
+{
+    give_semaphore(edmac_test_sem);
 }
 
 /* delay with interrupts disabled */
@@ -214,6 +247,11 @@ static void stub_test_cache_bmp()
 
     uint8_t * const bvram_mirror = get_bvram_mirror();
     if (!bvram_mirror) return;
+
+    if (!edmac_test_sem)
+    {
+        edmac_test_sem = create_named_semaphore("edmac_test", SEM_CREATE_LOCKED);
+    }
 
     /* perform the test twice:
      * one without cache cleaning, expected to fail,
@@ -249,14 +287,14 @@ static void stub_test_cache_bmp()
         /* this is generally incorrect; you should use fio_malloc instead. */
         dst = UNCACHEABLE(dst);
 
-        edmac_copy_rectangle_adv_start(dst, src, 960, 0, 0, 960, 0, 0, 720, 480);
+        edmac_copy_rect_async(dst, 960, src, 960, 720, 480, edmac_test_done_cbr, 0);
 
         /* wait for EDMAC transfer to finish */
         /* probably not needed, as take_semaphore will re-enable interrupts */
         busy_wait_ms(1000);
 
-        /* cleanup EDMAC transfer */
-        edmac_copy_rectangle_finish();
+        /* let the EDMAC interrupts through, they clean up the transfer */
+        take_semaphore(edmac_test_sem, 1000);
 
         /* interrupts are disabled again - from DryOS context switch */
         /* now compare the image buffers */
@@ -2248,10 +2286,14 @@ static void edmac_test_task()
     int yPos = 0;
 
     edmac_memcpy_res_lock();
-    edmac_copy_rectangle_adv(BMP_VRAM_START(idle), BMP_VRAM_START(real), 960, 120, 50, 960, 120, 50, 720, 440);
+    /* the area we play with starts at (120, 50); a line of the BMP buffer has 960 bytes */
+    uint8_t* real_area = BMP_VRAM_START(real) + 120 + 50 * 960;
+    uint8_t* idle_area = BMP_VRAM_START(idle) + 120 + 50 * 960;
+
+    edmac_copy_rect(idle_area, 960, real_area, 960, 720, 440);
     while(true)
     {
-        edmac_copy_rectangle_adv(BMP_VRAM_START(real), BMP_VRAM_START(idle), 960, 120, 50, 960, 120+xPos, 50+yPos, 720-xPos, 440-yPos);
+        edmac_copy_rect(real_area + xPos + yPos * 960, 960, idle_area, 960, 720-xPos, 440-yPos);
         xPos += xOff;
 
         if(xPos >= 100 || xPos <= -100)

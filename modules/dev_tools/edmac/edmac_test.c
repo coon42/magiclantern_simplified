@@ -21,10 +21,6 @@ static int Log(const char * fmt, ...)
     return len;
 }
 
-extern uint32_t edmac_read_chan;
-extern uint32_t edmac_write_chan;
-extern uint32_t dmaConnection;
-
 static void edmac_read_complete_cbr (void* ctx)
 {
     *((uint32_t *)ctx) = 1;
@@ -52,27 +48,27 @@ static void edmac_test_copy(
     dst = CACHEABLE(dst);
     
     /* EDMAC CBRs (to mark the operation as finished) */
-    RegisterEDmacCompleteCBR(edmac_read_chan, &edmac_read_complete_cbr, (void*) &read_done);
-    RegisterEDmacAbortCBR(edmac_read_chan, &edmac_read_complete_cbr, (void*) &read_done);
-    RegisterEDmacPopCBR(edmac_read_chan, &edmac_read_complete_cbr, (void*) &read_done);
-    RegisterEDmacCompleteCBR(edmac_write_chan, &edmac_write_complete_cbr, (void*) &write_done);
-    RegisterEDmacAbortCBR(edmac_write_chan, &edmac_write_complete_cbr, (void*) &write_done);
-    RegisterEDmacPopCBR(edmac_write_chan, &edmac_write_complete_cbr, (void*) &write_done);
+    RegisterEDmacCompleteCBR(edmac_memcpy_read_chan, &edmac_read_complete_cbr, (void*) &read_done);
+    RegisterEDmacAbortCBR(edmac_memcpy_read_chan, &edmac_read_complete_cbr, (void*) &read_done);
+    RegisterEDmacPopCBR(edmac_memcpy_read_chan, &edmac_read_complete_cbr, (void*) &read_done);
+    RegisterEDmacCompleteCBR(edmac_memcpy_write_chan, &edmac_write_complete_cbr, (void*) &write_done);
+    RegisterEDmacAbortCBR(edmac_memcpy_write_chan, &edmac_write_complete_cbr, (void*) &write_done);
+    RegisterEDmacPopCBR(edmac_memcpy_write_chan, &edmac_write_complete_cbr, (void*) &write_done);
     
     /* connect the selected channels to 6 so any data read from RAM is passed to write channel */
-    ConnectWriteEDmac(edmac_write_chan, dmaConnection);
-    ConnectReadEDmac(edmac_read_chan, dmaConnection);
+    ConnectWriteEDmac(edmac_memcpy_write_chan, edmac_memcpy_connection);
+    ConnectReadEDmac(edmac_memcpy_read_chan, edmac_memcpy_connection);
     
     /* set buffers, geometry and flags */
-    SetEDmac(edmac_read_chan,  src, src_info, src_flags);
-    SetEDmac(edmac_write_chan, dst, dst_info, dst_flags);
+    SetEDmac(edmac_memcpy_read_chan,  src, src_info, src_flags);
+    SetEDmac(edmac_memcpy_write_chan, dst, dst_info, dst_flags);
     
     /* start transfer. no flags for write, 2 for read channels */
     info_led_on();
     int64_t t0 = get_us_clock();
     
-    StartEDmac(edmac_write_chan, dst_start_flags);
-    StartEDmac(edmac_read_chan,  src_start_flags);
+    StartEDmac(edmac_memcpy_write_chan, dst_start_flags);
+    StartEDmac(edmac_memcpy_read_chan,  src_start_flags);
     
     while(!read_done || !write_done)
     {
@@ -93,8 +89,8 @@ static void edmac_test_copy(
     }
 
     /* not always needed, but shouldn't do any harm */
-    AbortEDmac(edmac_read_chan);
-    AbortEDmac(edmac_write_chan);
+    AbortEDmac(edmac_memcpy_read_chan);
+    AbortEDmac(edmac_memcpy_write_chan);
 
     int64_t t1 = get_us_clock();
     info_led_off();
@@ -106,8 +102,8 @@ static void edmac_test_copy(
     
     msleep(100);
     
-    uint32_t src_end_addr = edmac_get_current_address(edmac_read_chan);
-    uint32_t dst_end_addr = edmac_get_current_address(edmac_write_chan);
+    uint32_t src_end_addr = edmac_get_current_address(edmac_memcpy_read_chan);
+    uint32_t dst_end_addr = edmac_get_current_address(edmac_memcpy_write_chan);
     uint32_t expected_src_end_addr = (uint32_t) src + edmac_transfer_span(src_info);
     uint32_t expected_dst_end_addr = (uint32_t) dst + edmac_transfer_span(dst_info);
 
@@ -216,12 +212,12 @@ static void edmac_test_copy(
         }
     }
 
-    UnregisterEDmacCompleteCBR(edmac_read_chan);
-    UnregisterEDmacAbortCBR(edmac_read_chan);
-    UnregisterEDmacPopCBR(edmac_read_chan);
-    UnregisterEDmacCompleteCBR(edmac_write_chan);
-    UnregisterEDmacAbortCBR(edmac_write_chan);
-    UnregisterEDmacPopCBR(edmac_write_chan);
+    UnregisterEDmacCompleteCBR(edmac_memcpy_read_chan);
+    UnregisterEDmacAbortCBR(edmac_memcpy_read_chan);
+    UnregisterEDmacPopCBR(edmac_memcpy_read_chan);
+    UnregisterEDmacCompleteCBR(edmac_memcpy_write_chan);
+    UnregisterEDmacAbortCBR(edmac_memcpy_write_chan);
+    UnregisterEDmacPopCBR(edmac_memcpy_write_chan);
 }
 
 static void Log_md5(void * addr, int size)

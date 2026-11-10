@@ -35,7 +35,16 @@ void edmac_copy_rectangle_finish();
 void edmac_memcpy_res_lock();
 void edmac_memcpy_res_unlock();
 
+/* The channels and the connection used by the functions above, for code
+ * that watches or aborts a copy; 0xFFFFFFFF without CONFIG_EDMAC_MEMCPY */
+extern uint32_t edmac_memcpy_read_chan;
+extern uint32_t edmac_memcpy_write_chan;
+extern uint32_t edmac_memcpy_connection;
+
 /* pulls the raw data from EDMAC without Canon's lv_save_raw (for raw backend) */
 void edmac_raw_slurp(void* dst, int w, int h);
+
+/* The write channel used for this; 0xFFFFFFFF if not available */
+extern uint32_t edmac_raw_write_chan;
 
 #endif // _edmac_memcpy_h_
